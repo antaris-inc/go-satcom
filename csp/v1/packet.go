@@ -146,9 +146,10 @@ func (p *Packet) Err() error {
 }
 
 func (p *Packet) ToBytes() []byte {
-	bs := p.PacketHeader.ToBytes()
-	bs = append(bs, p.Data...)
-	return bs
+	buf := MakeBuffer(len(p.Data))
+	copy(buf, p.PacketHeader.ToBytes())
+	copy(buf[HEADER_LENGTH_BYTES:], p.Data)
+	return buf
 }
 
 func (p *Packet) FromBytes(bs []byte) error {
@@ -185,9 +186,14 @@ func WritePacket(dst io.Writer, p *Packet) error {
 	return nil
 }
 
-func ReadPacket(src io.Reader, mtu int) (*Packet, error) {
-	buf := make([]byte, mtu)
+// Initializes a new byte slice appropriate for a full CSP packet.
+func MakeBuffer(maxDataSize int) []byte {
+	return make([]byte, HEADER_LENGTH_BYTES+maxDataSize)
+}
 
+// Reads a CSP packet from an io.Reader using the supplied buffer. The caller should
+// initialize the buffer to the max expected packet size (see MakeBuffer).
+func ReadPacket(src io.Reader, buf []byte) (*Packet, error) {
 	n, err := src.Read(buf)
 	if err != nil {
 		return nil, err
