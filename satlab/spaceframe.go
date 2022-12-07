@@ -15,12 +15,15 @@
 package satlab
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 )
 
 const (
+	SPACEFRAME_ASM_LENGTH_BYTES = 4
+
 	SPACEFRAME_HEADER_LENGTH_BYTES = 2
 
 	// field lengths (# bits)
@@ -30,6 +33,8 @@ const (
 )
 
 var (
+	SPACEFRAME_ASM = []byte{0x1A, 0xCF, 0xFC, 0x1D}
+
 	SPACEFRAME_TYPE_CSP = SpaceframeType(0)
 
 	// Not yet supported/tested
@@ -44,7 +49,7 @@ type SpaceframeConfig struct {
 }
 
 func (cfg *SpaceframeConfig) FrameSize() int {
-	n := SPACEFRAME_HEADER_LENGTH_BYTES + cfg.PayloadDataSize
+	n := SPACEFRAME_ASM_LENGTH_BYTES + SPACEFRAME_HEADER_LENGTH_BYTES + cfg.PayloadDataSize
 	if cfg.CRC32Enabled {
 		n += CRC32_CHECKSUM_LENGTH_BYTES
 	}
@@ -141,6 +146,9 @@ func Enframe(msg []byte, cfg *SpaceframeConfig) ([]byte, error) {
 		frm = applyCRC32(frm)
 	}
 
+	// prepend ASM
+	frm = append(SPACEFRAME_ASM, frm...)
+
 	return frm, nil
 }
 
@@ -149,8 +157,14 @@ func Deframe(frm []byte, cfg *SpaceframeConfig) ([]byte, error) {
 		return nil, errors.New("Spaceframe length unexpected")
 	}
 
-	var err error
+	if bytes.Compare(frm[:SPACEFRAME_ASM_LENGTH_BYTES], SPACEFRAME_ASM) != 0 {
+		return nil, errors.New("Spaceframe ASM missing or invalid")
+	}
 
+	// strip ASM
+	frm = frm[SPACEFRAME_ASM_LENGTH_BYTES:]
+
+	var err error
 	if cfg.CRC32Enabled {
 		frm, err = verifyAndRemoveCRC32(frm)
 		if err != nil {
@@ -161,11 +175,11 @@ func Deframe(frm []byte, cfg *SpaceframeConfig) ([]byte, error) {
 	hb := frm[:SPACEFRAME_HEADER_LENGTH_BYTES]
 
 	var hdr SpaceframeHeader
-	if err := hdr.FromBytes(hb); err != nil {
+	if err = hdr.FromBytes(hb); err != nil {
 		return nil, err
 	}
 
-	if err := hdr.Err(); err != nil {
+	if err = hdr.Err(); err != nil {
 		return nil, fmt.Errorf("Spaceframe header: %v", err)
 	}
 

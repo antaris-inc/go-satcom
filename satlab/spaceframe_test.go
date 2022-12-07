@@ -31,7 +31,7 @@ func TestSpaceframeConfigFrameSize(t *testing.T) {
 				Type:            SPACEFRAME_TYPE_CSP,
 				PayloadDataSize: 1024,
 			},
-			want: 1026,
+			want: 1030,
 		},
 
 		// with CRC32 enabled
@@ -41,7 +41,7 @@ func TestSpaceframeConfigFrameSize(t *testing.T) {
 				PayloadDataSize: 1024,
 				CRC32Enabled:    true,
 			},
-			want: 1030,
+			want: 1034,
 		},
 	}
 
@@ -118,14 +118,14 @@ func TestSpaceframeEnframe(t *testing.T) {
 		{
 			msg:  []byte("XYZ"),
 			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 3},
-			want: []byte{0x0, 0x3, 0x58, 0x59, 0x5a},
+			want: []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a},
 		},
 
 		// padding added as needed
 		{
 			msg:  []byte("XYZ"),
 			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 6},
-			want: []byte{0x0, 0x3, 0x58, 0x59, 0x5a, 0x0, 0x0, 0x0},
+			want: []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a, 0x0, 0x0, 0x0},
 		},
 	}
 
@@ -178,14 +178,14 @@ func TestSpaceframeDeframe(t *testing.T) {
 	}{
 		// basic payload with type=CSP
 		{
-			frm:  []byte{0x0, 0x3, 0x58, 0x59, 0x5a},
+			frm:  []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a},
 			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 3},
 			want: []byte{0x58, 0x59, 0x5a},
 		},
 
 		// padding removed as needed
 		{
-			frm:  []byte{0x0, 0x3, 0x58, 0x59, 0x5a, 0x0, 0x0, 0x0},
+			frm:  []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a, 0x0, 0x0, 0x0},
 			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 6},
 			want: []byte{0x58, 0x59, 0x5a},
 		},
@@ -194,7 +194,7 @@ func TestSpaceframeDeframe(t *testing.T) {
 	for i, tt := range tests {
 		got, err := Deframe(tt.frm, &tt.cfg)
 		if err != nil {
-			t.Errorf("case %d: unexpected error: %v", err, i)
+			t.Errorf("case %d: unexpected error: %v", i, err)
 			continue
 		}
 
