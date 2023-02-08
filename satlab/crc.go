@@ -21,32 +21,36 @@ import (
 )
 
 const (
-	CRC32_CHECKSUM_LENGTH_BYTES = 4
+	CRC_CHECKSUM_LENGTH_BYTES = 4
 )
 
-func applyCRC32(v []byte) []byte {
-	cv := crc32.ChecksumIEEE(v)
-	cb := make([]byte, CRC32_CHECKSUM_LENGTH_BYTES)
+var (
+	crc32cTable = crc32.MakeTable(crc32.Castagnoli)
+)
+
+func applyCRC(v []byte) []byte {
+	cv := crc32.Checksum(v, crc32cTable)
+	cb := make([]byte, CRC_CHECKSUM_LENGTH_BYTES)
 	binary.BigEndian.PutUint32(cb, cv)
 	return append(v, cb...)
 }
 
-func verifyAndRemoveCRC32(v []byte) ([]byte, error) {
+func verifyAndRemoveCRC(v []byte) ([]byte, error) {
 	vl := len(v)
 
-	if vl <= CRC32_CHECKSUM_LENGTH_BYTES {
-		return nil, errors.New("too few bytes for CRC32 validation")
+	if vl <= CRC_CHECKSUM_LENGTH_BYTES {
+		return nil, errors.New("too few bytes for CRC validation")
 	}
 
 	// extract the trailer
-	cb := v[vl-CRC32_CHECKSUM_LENGTH_BYTES:]
-	v = v[:vl-CRC32_CHECKSUM_LENGTH_BYTES]
+	cb := v[vl-CRC_CHECKSUM_LENGTH_BYTES:]
+	v = v[:vl-CRC_CHECKSUM_LENGTH_BYTES]
 
 	gotCksum := binary.BigEndian.Uint32(cb)
 
-	wantCksum := crc32.ChecksumIEEE(v)
+	wantCksum := crc32.Checksum(v, crc32cTable)
 	if gotCksum != wantCksum {
-		return nil, errors.New("CRC32 checksum mismatch")
+		return nil, errors.New("CRC checksum mismatch")
 	}
 
 	return v, nil

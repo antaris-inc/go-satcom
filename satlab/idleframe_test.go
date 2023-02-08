@@ -22,7 +22,7 @@ import (
 func TestNewIdleFrameZeros(t *testing.T) {
 	cfg := SpaceframeConfig{
 		PayloadDataSize: 4,
-		CRC32Enabled:    true,
+		CRCEnabled:      true,
 	}
 
 	got, err := NewIdleFrameZeros(&cfg)
@@ -51,7 +51,7 @@ func TestNewIdleFrameZeros(t *testing.T) {
 func TestNewIdleFrameRand(t *testing.T) {
 	cfg := SpaceframeConfig{
 		PayloadDataSize: 4,
-		CRC32Enabled:    true,
+		CRCEnabled:      true,
 	}
 
 	got, err := NewIdleFrameRand(&cfg)

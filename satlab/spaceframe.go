@@ -45,13 +45,13 @@ type SpaceframeConfig struct {
 	Type            SpaceframeType
 	PayloadDataSize int
 
-	CRC32Enabled bool
+	CRCEnabled bool
 }
 
 func (cfg *SpaceframeConfig) FrameSize() int {
 	n := SPACEFRAME_ASM_LENGTH_BYTES + SPACEFRAME_HEADER_LENGTH_BYTES + cfg.PayloadDataSize
-	if cfg.CRC32Enabled {
-		n += CRC32_CHECKSUM_LENGTH_BYTES
+	if cfg.CRCEnabled {
+		n += CRC_CHECKSUM_LENGTH_BYTES
 	}
 	return n
 }
@@ -142,8 +142,8 @@ func Enframe(msg []byte, cfg *SpaceframeConfig) ([]byte, error) {
 	copy(pmsg, msg)
 	frm = append(frm, pmsg...)
 
-	if cfg.CRC32Enabled {
-		frm = applyCRC32(frm)
+	if cfg.CRCEnabled {
+		frm = applyCRC(frm)
 	}
 
 	// prepend ASM
@@ -165,8 +165,8 @@ func Deframe(frm []byte, cfg *SpaceframeConfig) ([]byte, error) {
 	frm = frm[SPACEFRAME_ASM_LENGTH_BYTES:]
 
 	var err error
-	if cfg.CRC32Enabled {
-		frm, err = verifyAndRemoveCRC32(frm)
+	if cfg.CRCEnabled {
+		frm, err = verifyAndRemoveCRC(frm)
 		if err != nil {
 			return nil, err
 		}

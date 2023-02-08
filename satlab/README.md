@@ -11,7 +11,7 @@ After importing this package, build a config and enframe your message:
 	cfg := satlab.SpaceframeConfig{
 		Type:            satlab.SPACEFRAME_TYPE_CSP,
 		PayloadDataSize: 1024,
-		CRC32Enabled:    true,
+		CRCEnabled:      true,
 	}
 
 	msg := []byte("ping")

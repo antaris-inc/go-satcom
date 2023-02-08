@@ -19,19 +19,19 @@ import (
 	"testing"
 )
 
-func TestCRC32(t *testing.T) {
-	gotBytes := applyCRC32([]byte{0x1, 0x2})
+func TestCRC(t *testing.T) {
+	gotBytes := applyCRC([]byte{0x1, 0x2})
 
-	wantBytes := []byte{0x1, 0x2, 0xB6, 0xCC, 0x42, 0x92}
+	wantBytes := []byte{0x1, 0x2, 0x03, 0xf8, 0x9f, 0x52}
 
 	if !reflect.DeepEqual(wantBytes, gotBytes) {
 		t.Errorf("unexpected result: want=% x, got=% x", wantBytes, gotBytes)
 	}
 }
 
-func TestCRC32Verify(t *testing.T) {
-	arg := []byte{0x1, 0x2, 0xB6, 0xCC, 0x42, 0x92}
-	gotBytes, err := verifyAndRemoveCRC32(arg)
+func TestCRCVerify(t *testing.T) {
+	arg := []byte{0x1, 0x2, 0x03, 0xf8, 0x9f, 0x52}
+	gotBytes, err := verifyAndRemoveCRC(arg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -43,17 +43,17 @@ func TestCRC32Verify(t *testing.T) {
 	}
 }
 
-func TestCRC32VerifyErrors(t *testing.T) {
+func TestCRCVerifyErrors(t *testing.T) {
 	tests := [][]byte{
 		// Not enough data
 		[]byte{0x1, 0x2},
 
-		// First byte zero'd out
-		[]byte{0x0, 0x2, 0xB6, 0xCC, 0x42, 0x92},
+		// CRC valid, but first byte zero'd out
+		[]byte{0x0, 0x2, 0x03, 0xf8, 0x9f, 0x52},
 	}
 
 	for i, tt := range tests {
-		_, err := verifyAndRemoveCRC32(tt)
+		_, err := verifyAndRemoveCRC(tt)
 		if err == nil {
 			t.Errorf("case %d: expected non-nil error", i)
 		}

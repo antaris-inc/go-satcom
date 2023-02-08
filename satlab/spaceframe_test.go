@@ -34,12 +34,12 @@ func TestSpaceframeConfigFrameSize(t *testing.T) {
 			want: 1030,
 		},
 
-		// with CRC32 enabled
+		// with CRC enabled
 		{
 			cfg: SpaceframeConfig{
 				Type:            SPACEFRAME_TYPE_CSP,
 				PayloadDataSize: 1024,
-				CRC32Enabled:    true,
+				CRCEnabled:      true,
 			},
 			want: 1034,
 		},
