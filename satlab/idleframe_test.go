@@ -42,7 +42,7 @@ func TestNewIdleFrameZeros(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	want := []byte{0x0, 0x0, 0x0, 0x0}
+	want := []byte{}
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("unexpected result: want=% x got=% x", want, got)
 	}

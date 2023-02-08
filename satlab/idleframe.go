@@ -20,16 +20,14 @@ import (
 )
 
 // Creates an SRS4 idleframe using an "all zeros" message. This is a valid Spaceframe, but the
-// payload is a series of zero values. Any configured features, such as CRC32, are implemented
-// as intended (i.e. they are not zero'd out).
+// payload is simply empty. Any configured features, such as CRC, are still implemented properly.
 func NewIdleFrameZeros(cfg *SpaceframeConfig) ([]byte, error) {
-	msg := make([]byte, cfg.PayloadDataSize)
-	return Enframe(msg, cfg)
+	return Enframe([]byte{}, cfg)
 }
 
 // Creates an SRS4 idleframe using pseudorandom data. This is NOT a valid Spaceframe. The frame
 // length is based on the Spaceframe config, but the entire frame content (following the ASM)
-// is pseudorandom data. Configured features, such as CRC32, will not validate on the receiving end.
+// is pseudorandom data. Configured features, such as CRC, will not validate on the receiving end.
 func NewIdleFrameRand(cfg *SpaceframeConfig) ([]byte, error) {
 	size := cfg.FrameSize()
 	frm := make([]byte, size)
