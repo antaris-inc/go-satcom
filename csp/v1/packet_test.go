@@ -22,17 +22,17 @@ import (
 func TestPacketHeaderEncode(t *testing.T) {
 	ph := PacketHeader{
 		Priority:        2,
-		Destination:     11,
-		DestinationPort: 11,
-		Source:          24,
-		SourcePort:      11,
+		Destination:     24,
+		DestinationPort: 1,
+		Source:          10,
+		SourcePort:      63,
 	}
 
 	if err := ph.Err(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	want := []byte{0xb0, 0xb2, 0xcb, 0x00}
+	want := []byte{0x95, 0x80, 0x7f, 0x00}
 	got := ph.ToBytes()
 
 	if !reflect.DeepEqual(want, got) {
@@ -41,14 +41,14 @@ func TestPacketHeaderEncode(t *testing.T) {
 }
 
 func TestPacketHeaderDecode(t *testing.T) {
-	hdr := []byte{0xb0, 0xb2, 0xcb, 0x00}
+	hdr := []byte{0x95, 0x80, 0x5C, 0x00}
 
 	want := PacketHeader{
 		Priority:        2,
-		Destination:     11,
-		DestinationPort: 11,
-		Source:          24,
-		SourcePort:      11,
+		Destination:     24,
+		DestinationPort: 1,
+		Source:          10,
+		SourcePort:      28,
 	}
 
 	got := PacketHeader{}
