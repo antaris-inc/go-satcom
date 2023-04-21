@@ -24,6 +24,7 @@ var (
 	SPACE_PACKET_ASM      = []byte{0xD3, 0x91, 0xD3, 0x91}
 
 	SPACE_PACKET_HEADER_LENGTH = 6
+	SPACE_PACKET_FOOTER_LENGTH = 4
 )
 
 type SpacePacketHeader struct {
@@ -84,6 +85,51 @@ func (p *SpacePacketHeader) FromBytes(bs []byte) error {
 	p.SequenceNumber = int(binary.LittleEndian.Uint16(bs[2:4]))
 	p.Destination = int(bs[4])
 	p.CommandNumber = int(bs[5])
+
+	return nil
+}
+
+type SpacePacketFooter struct {
+	// Field 1
+	HardwareID int
+
+	// Field 2
+	CRC8 []byte
+}
+
+func (p *SpacePacketFooter) Err() error {
+	if p.HardwareID < 0 || p.HardwareID > 65535 {
+		return errors.New("HardwareID must be 0-65535")
+	}
+	if p.CRC8 == nil {
+		return errors.New("CRC8 must be set")
+	}
+	return nil
+}
+
+func (p *SpacePacketFooter) ToBytes() []byte {
+	bs := make([]byte, SPACE_PACKET_FOOTER_LENGTH)
+
+	binary.LittleEndian.PutUint16(bs[0:2], uint16(p.HardwareID))
+
+	// little endian mapping
+	bs[2] = p.CRC8[1]
+	bs[3] = p.CRC8[0]
+
+	return bs
+}
+
+func (p *SpacePacketFooter) FromBytes(bs []byte) error {
+	if len(bs) != SPACE_PACKET_FOOTER_LENGTH {
+		return errors.New("unexpected footer length")
+	}
+
+	p.HardwareID = int(binary.LittleEndian.Uint16(bs[0:2]))
+
+	// reversing little endian mapping
+	p.CRC8 = make([]byte, 2)
+	p.CRC8[0] = bs[3]
+	p.CRC8[1] = bs[2]
 
 	return nil
 }

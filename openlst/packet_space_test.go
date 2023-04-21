@@ -46,3 +46,39 @@ func TestSpacePacketHeaderDecode(t *testing.T) {
 		t.Errorf("unexpected result: want=%#v got=%#v", want, got)
 	}
 }
+
+func TestSpacePacketFooterEncode(t *testing.T) {
+	pf := SpacePacketFooter{
+		HardwareID: 2047,
+		CRC8:       []byte{0x01, 0x02},
+	}
+
+	if err := pf.Err(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []byte{0xff, 0x07, 0x02, 0x01}
+	got := pf.ToBytes()
+
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("unexpected result: want=%x got=%x", want, got)
+	}
+}
+
+func TestSpacePacketFooterDecode(t *testing.T) {
+	ftr := []byte{0x0e, 0x01, 0x0b, 0x0a}
+
+	want := SpacePacketFooter{
+		HardwareID: 270,
+		CRC8:       []byte{0x0a, 0x0b},
+	}
+
+	got := SpacePacketFooter{}
+	if err := got.FromBytes(ftr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("unexpected result: want=%#v got=%#v", want, got)
+	}
+}
