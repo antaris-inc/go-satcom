@@ -60,3 +60,78 @@ func TestVehiclePacketHeaderDecode(t *testing.T) {
 		t.Errorf("unexpected result: want=%#v got=%#v", want, got)
 	}
 }
+
+func TestNewVehiclePacketToBytes_SmallFrame(t *testing.T) {
+	dat := []byte{0x0a, 0x0b, 0x0c, 0x0d}
+
+	p := NewVehiclePacket(
+		VehiclePacketHeader{
+			HardwareID:     1023,
+			SequenceNumber: 1,
+			Destination:    253,
+			CommandNumber:  56,
+		},
+		dat,
+	)
+	if err := p.Err(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []byte{0x0b, 0xff, 0x03, 0x01, 0x00, 0xfd, 0x38, 0x0a, 0x0b, 0x0c, 0x0d}
+	got := p.ToBytes()
+	if !reflect.DeepEqual(want, got) {
+		t.Fatalf("unexpected encoded format: want=% x got=% x", want, got)
+	}
+}
+
+func TestNewVehiclePacketToBytes_TooMuchData(t *testing.T) {
+	dat := make([]byte, 1024)
+
+	p := NewVehiclePacket(
+		VehiclePacketHeader{
+			HardwareID:     1023,
+			SequenceNumber: 1,
+			Destination:    253,
+			CommandNumber:  56,
+		},
+		dat,
+	)
+	if err := p.Err(); err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestVehiclePacketFromBytes_SmallFrame(t *testing.T) {
+	val := []byte{0x0a, 0xff, 0x03, 0x04, 0x00, 0xfd, 0x38, 0x01, 0x02, 0x03}
+
+	p := VehiclePacket{}
+	if err := p.FromBytes(val); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := p.Err(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantData := []byte{0x01, 0x02, 0x03}
+	if !reflect.DeepEqual(wantData, p.Data) {
+		t.Fatalf("unexpected payload: want=% x got=% x", wantData, p.Data)
+	}
+}
+
+func TestVehiclePacketFromBytes_EmptyFrame(t *testing.T) {
+	val := []byte{0x07, 0xff, 0x03, 0x04, 0x00, 0xfd, 0x38}
+
+	p := VehiclePacket{}
+	if err := p.FromBytes(val); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := p.Err(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(p.Data) != 0 {
+		t.Fatalf("expected empty payload, got=% x", p.Data)
+	}
+}

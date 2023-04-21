@@ -43,6 +43,7 @@ type VehiclePacketHeader struct {
 }
 
 func (p *VehiclePacketHeader) Err() error {
+	//TODO(bcwaldon): confirm length bounds
 	if p.Length < 7 || p.Length > 251 {
 		return errors.New("Length must be 7-251")
 	}
@@ -85,4 +86,65 @@ func (p *VehiclePacketHeader) FromBytes(bs []byte) error {
 	p.CommandNumber = int(bs[6])
 
 	return nil
+}
+
+type VehiclePacket struct {
+	VehiclePacketHeader
+	Data []byte
+}
+
+// Validates packet content, returning non-nil error if any issues detected.
+func (p *VehiclePacket) Err() error {
+	if err := p.VehiclePacketHeader.Err(); err != nil {
+		return err
+	}
+	if p.VehiclePacketHeader.Length != VEHICLE_PACKET_HEADER_LENGTH+len(p.Data) {
+		return errors.New("packet length unequal to header length")
+	}
+
+	return nil
+}
+
+// Encodes packet to byte slice, including header and data.
+func (p *VehiclePacket) ToBytes() []byte {
+	buf := make([]byte, p.VehiclePacketHeader.Length)
+	copy(buf, p.VehiclePacketHeader.ToBytes())
+	copy(buf[VEHICLE_PACKET_HEADER_LENGTH:], p.Data)
+	return buf
+}
+
+// Hydrates Packet from provided byte slice, returning non-nil if any
+// issues are encountered.
+func (p *VehiclePacket) FromBytes(bs []byte) error {
+	if len(bs) < VEHICLE_PACKET_HEADER_LENGTH {
+		return errors.New("insufficient data")
+	}
+
+	var ph VehiclePacketHeader
+	if err := ph.FromBytes(bs[0:VEHICLE_PACKET_HEADER_LENGTH]); err != nil {
+		return err
+	}
+
+	p.VehiclePacketHeader = ph
+	p.Data = bs[VEHICLE_PACKET_HEADER_LENGTH:]
+
+	return nil
+}
+
+// Constructs a new VehiclePacket using provided header and data inputs.
+//
+// The header length field is automatically set based on the length of
+// the provided data.
+//
+// The packet returned must be confirmed as valid by the client before
+// further use.
+func NewVehiclePacket(hdr VehiclePacketHeader, dat []byte) *VehiclePacket {
+	p := VehiclePacket{
+		VehiclePacketHeader: hdr,
+		Data:                dat,
+	}
+
+	p.VehiclePacketHeader.Length = VEHICLE_PACKET_HEADER_LENGTH + len(dat)
+
+	return &p
 }
