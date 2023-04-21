@@ -17,6 +17,8 @@ package openlst
 import (
 	"encoding/binary"
 	"errors"
+
+	"github.com/sigurn/crc16"
 )
 
 var (
@@ -25,6 +27,9 @@ var (
 
 	SPACE_PACKET_HEADER_LENGTH = 6
 	SPACE_PACKET_FOOTER_LENGTH = 4
+
+	//TODO(bcwaldon): need to confirm CRC16 algorithm
+	crc16Table = crc16.MakeTable(crc16.CRC16_MAXIM)
 )
 
 type SpacePacketHeader struct {
@@ -45,8 +50,9 @@ type SpacePacketHeader struct {
 }
 
 func (p *SpacePacketHeader) Err() error {
-	if p.Length < 7 || p.Length > 251 {
-		return errors.New("Length must be 7-251")
+	//TODO(bcwaldon): confirm length bounds
+	if p.Length < 10 || p.Length > 251 {
+		return errors.New("Length must be 10-251")
 	}
 	if p.Port != 0 && p.Port != 1 {
 		return errors.New("Port must be 0 or 1")
@@ -94,15 +100,15 @@ type SpacePacketFooter struct {
 	HardwareID int
 
 	// Field 2
-	CRC8 []byte
+	CRC16 []byte
 }
 
 func (p *SpacePacketFooter) Err() error {
 	if p.HardwareID < 0 || p.HardwareID > 65535 {
 		return errors.New("HardwareID must be 0-65535")
 	}
-	if p.CRC8 == nil {
-		return errors.New("CRC8 must be set")
+	if len(p.CRC16) != 2 {
+		return errors.New("CRC16 set incorrectly")
 	}
 	return nil
 }
@@ -112,9 +118,12 @@ func (p *SpacePacketFooter) ToBytes() []byte {
 
 	binary.LittleEndian.PutUint16(bs[0:2], uint16(p.HardwareID))
 
-	// little endian mapping
-	bs[2] = p.CRC8[1]
-	bs[3] = p.CRC8[0]
+	// nil check required as ToBytes is used during checksum creation.
+	if p.CRC16 != nil {
+		// little endian mapping
+		bs[2] = p.CRC16[1]
+		bs[3] = p.CRC16[0]
+	}
 
 	return bs
 }
@@ -127,9 +136,113 @@ func (p *SpacePacketFooter) FromBytes(bs []byte) error {
 	p.HardwareID = int(binary.LittleEndian.Uint16(bs[0:2]))
 
 	// reversing little endian mapping
-	p.CRC8 = make([]byte, 2)
-	p.CRC8[0] = bs[3]
-	p.CRC8[1] = bs[2]
+	p.CRC16 = make([]byte, 2)
+	p.CRC16[0] = bs[3]
+	p.CRC16[1] = bs[2]
+
+	return nil
+}
+
+type SpacePacket struct {
+	SpacePacketHeader
+	Data []byte
+	SpacePacketFooter
+}
+
+// Validates packet content, returning non-nil error if any issues detected.
+func (p *SpacePacket) Err() error {
+	if err := p.SpacePacketHeader.Err(); err != nil {
+		return err
+	}
+	if err := p.SpacePacketFooter.Err(); err != nil {
+		return err
+	}
+
+	if p.SpacePacketHeader.Length != SPACE_PACKET_HEADER_LENGTH+len(p.Data)+SPACE_PACKET_FOOTER_LENGTH {
+		return errors.New("packet length unequal to header length")
+	}
+
+	if err := verifySpacePacketCRC16(p); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Encodes packet to byte slice, including header, data and footer.
+func (p *SpacePacket) ToBytes() []byte {
+	buf := make([]byte, p.SpacePacketHeader.Length)
+	copy(buf, p.SpacePacketHeader.ToBytes())
+	copy(buf[SPACE_PACKET_HEADER_LENGTH:], p.Data)
+	copy(buf[SPACE_PACKET_HEADER_LENGTH+len(p.Data):], p.SpacePacketFooter.ToBytes())
+	return buf
+}
+
+// Hydrates Packet from provided byte slice, returning non-nil if any
+// issues are encountered.
+func (p *SpacePacket) FromBytes(bs []byte) error {
+	if len(bs) < SPACE_PACKET_HEADER_LENGTH {
+		return errors.New("insufficient data")
+	}
+
+	var ph SpacePacketHeader
+	if err := ph.FromBytes(bs[0:SPACE_PACKET_HEADER_LENGTH]); err != nil {
+		return err
+	}
+
+	var pf SpacePacketFooter
+	if err := pf.FromBytes(bs[len(bs)-SPACE_PACKET_FOOTER_LENGTH-1:]); err != nil {
+		return err
+	}
+
+	p.SpacePacketHeader = ph
+	p.Data = bs[SPACE_PACKET_HEADER_LENGTH : len(bs)-SPACE_PACKET_FOOTER_LENGTH]
+	p.SpacePacketFooter = pf
+
+	return nil
+}
+
+// Constructs a new SpacePacket using provided header and data inputs.
+//
+// The header length and footer CRC16 fields are both set automatically
+// based on the data provided.
+//
+// The packet returned must be confirmed as valid by the client before
+// further use.
+func NewSpacePacket(hdr SpacePacketHeader, dat []byte, ftr SpacePacketFooter) *SpacePacket {
+	p := SpacePacket{
+		SpacePacketHeader: hdr,
+		Data:              dat,
+		SpacePacketFooter: ftr,
+	}
+
+	p.SpacePacketHeader.Length = SPACE_PACKET_HEADER_LENGTH + len(dat) + SPACE_PACKET_FOOTER_LENGTH
+	p.SpacePacketFooter.CRC16 = makeSpacePacketCRC16(&p)
+
+	return &p
+}
+
+func makeSpacePacketCRC16(p *SpacePacket) []byte {
+	bs := p.ToBytes()
+
+	//TODO(bcwaldon); confirm candidate bytes
+	inp := bs[1 : len(bs)-2]
+
+	val := make([]byte, 2)
+	// Not reversing byte order here for usability, even though
+	// the order is reversed when encoded to wire format.
+	binary.BigEndian.PutUint16(val, crc16.Checksum(inp, crc16Table))
+
+	return val
+}
+
+func verifySpacePacketCRC16(p *SpacePacket) error {
+	got := p.SpacePacketFooter.CRC16
+	want := makeSpacePacketCRC16(p)
+
+	if got[0] != want[0] || got[1] != want[1] {
+		return errors.New("checksum mismatch")
+	}
 
 	return nil
 }

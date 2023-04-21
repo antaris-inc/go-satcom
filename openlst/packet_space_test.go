@@ -50,7 +50,7 @@ func TestSpacePacketHeaderDecode(t *testing.T) {
 func TestSpacePacketFooterEncode(t *testing.T) {
 	pf := SpacePacketFooter{
 		HardwareID: 2047,
-		CRC8:       []byte{0x01, 0x02},
+		CRC16:      []byte{0x01, 0x02},
 	}
 
 	if err := pf.Err(); err != nil {
@@ -70,7 +70,7 @@ func TestSpacePacketFooterDecode(t *testing.T) {
 
 	want := SpacePacketFooter{
 		HardwareID: 270,
-		CRC8:       []byte{0x0a, 0x0b},
+		CRC16:      []byte{0x0a, 0x0b},
 	}
 
 	got := SpacePacketFooter{}
@@ -80,5 +80,23 @@ func TestSpacePacketFooterDecode(t *testing.T) {
 
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("unexpected result: want=%#v got=%#v", want, got)
+	}
+}
+
+func TestNewSpacePacketToBytes_TooMuchData(t *testing.T) {
+	p := NewSpacePacket(
+		SpacePacketHeader{
+			Port:           1,
+			SequenceNumber: 4000,
+			Destination:    253,
+			CommandNumber:  56,
+		},
+		make([]byte, 1024),
+		SpacePacketFooter{
+			HardwareID: 12,
+		},
+	)
+	if err := p.Err(); err == nil {
+		t.Fatalf("expected non-nil error")
 	}
 }
