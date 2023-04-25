@@ -51,7 +51,7 @@ func (c *frameReader) Read(dst []byte) (int, error) {
 	}
 
 	copy(dst, c.readBuffer[:dstN])
-	c.seek(dstN)
+	c.seekToIndex(dstN)
 
 	return dstN, nil
 }
@@ -72,13 +72,13 @@ func (c *frameReader) Seek() error {
 		if idx >= 0 {
 			// discard irrelevant data up to start of sync marker if necessary
 			if idx >= 1 {
-				c.seek(idx)
+				c.seekToIndex(idx)
 			}
 			return nil
 		}
 
 		// no sync marker identified, so we discard all irrelevant data and repeat
-		c.seek(c.cursor - len(c.syncMarker) + 1)
+		c.seekToIndex(c.cursor - len(c.syncMarker) + 1)
 	}
 }
 
@@ -106,7 +106,7 @@ func (c *frameReader) fillReadBuffer(target int) error {
 }
 
 // Discard N leading bytes from buffer.
-func (c *frameReader) seek(n int) {
+func (c *frameReader) seekToIndex(n int) {
 	copy(c.readBuffer, c.readBuffer[n:])
 	c.cursor = c.cursor - n
 }
