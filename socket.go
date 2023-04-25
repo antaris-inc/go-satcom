@@ -15,7 +15,9 @@
 package satcom
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/antaris-inc/go-satcom/adapter"
@@ -27,21 +29,27 @@ type SocketConfig struct {
 	MessageMTU int
 }
 
-func NewSocket(cfg SocketConfig, uplink io.Writer) (*Socket, error) {
+func NewSocket(cfg SocketConfig, downlink io.Reader, uplink io.Writer) (*Socket, error) {
 	if len(cfg.SyncMarker) == 0 {
 		return nil, errors.New("SyncMarker must be provided")
 	}
 
 	sock := Socket{
-		writer: uplink,
 		cfg:    cfg,
+		reader: downlink,
+		writer: uplink,
 	}
 	return &sock, nil
 }
 
 type Socket struct {
-	writer io.Writer
 	cfg    SocketConfig
+	reader io.Reader
+	writer io.Writer
+
+	// Used to asynchronously communicate
+	// errors during Recv
+	recvErr error
 }
 
 func (c *Socket) Send(msg []byte) error {
@@ -73,4 +81,69 @@ func (c *Socket) Send(msg []byte) error {
 	}
 
 	return nil
+}
+
+func (s *Socket) Recv(ctx context.Context) <-chan []byte {
+	reader := NewFrameReader(s.reader, s.cfg.SyncMarker, s.cfg.MessageMTU)
+
+	ch := make(chan []byte)
+	go func() {
+		defer func() {
+			close(ch)
+		}()
+
+		for {
+			if err := reader.Seek(); err != nil {
+				s.recvErr = fmt.Errorf("read failure: %v", err)
+				return
+			}
+
+			msg := make([]byte, s.cfg.MessageMTU)
+			n, err := reader.Read(msg)
+
+			// check if context is closed and shutdown if so
+			select {
+			case <-ctx.Done():
+				s.recvErr = ctx.Err()
+				return
+			default:
+			}
+
+			if err != nil {
+				if err == io.EOF {
+					return
+				}
+
+				//TODO(bcwaldon): determine if this behavior is acceptable
+				s.recvErr = fmt.Errorf("read failure: %v", err)
+				return
+			}
+
+			if n == 0 {
+				//TODO(bcwaldon): determine if this behavior is acceptable
+				s.recvErr = errors.New("read failure: empty read operation")
+				return
+			}
+
+			// must strip leading sync marker and truncate buffer to actual
+			// number of bytes read
+			msg = msg[len(s.cfg.SyncMarker):n]
+			for i := len(s.cfg.Adapters) - 1; i >= 0; i-- {
+				msg, err = s.cfg.Adapters[i].Unwrap(msg)
+				if err != nil {
+					//TODO(bcwaldon): determine if this behavior is acceptable - probably not!
+					s.recvErr = fmt.Errorf("message decode failure: %v", err)
+					return
+				}
+			}
+
+			ch <- msg
+		}
+	}()
+
+	return ch
+}
+
+func (c *Socket) RecvError() error {
+	return c.recvErr
 }

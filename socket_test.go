@@ -16,6 +16,7 @@ package satcom
 
 import (
 	"bytes"
+	"context"
 	"reflect"
 	"testing"
 
@@ -87,7 +88,7 @@ func TestSocketSend_Success(t *testing.T) {
 
 	for ti, tt := range tests {
 		buf := bytes.NewBuffer(nil)
-		sock, err := NewSocket(tt.SocketConfig, buf)
+		sock, err := NewSocket(tt.SocketConfig, nil, buf)
 		if err != nil {
 			t.Errorf("case %d: failed constructing Socket: %v", ti, err)
 			continue
@@ -132,7 +133,7 @@ func TestSocketSend_Failure(t *testing.T) {
 
 	for ti, tt := range tests {
 		buf := bytes.NewBuffer(nil)
-		sock, err := NewSocket(tt.SocketConfig, buf)
+		sock, err := NewSocket(tt.SocketConfig, nil, buf)
 		if err != nil {
 			t.Errorf("case %d: failed constructing Socket: %v", ti, err)
 			continue
@@ -140,5 +141,154 @@ func TestSocketSend_Failure(t *testing.T) {
 		if err := sock.Send(tt.msg); err == nil {
 			t.Errorf("case %d: expected non-nil error", ti)
 		}
+	}
+}
+
+func TestSocketRecv_Success(t *testing.T) {
+	tests := []struct {
+		SocketConfig
+		input []byte
+		want  [][]byte
+	}{
+		// Three frames without adapters
+		{
+			SocketConfig: SocketConfig{
+				MessageMTU: 4,
+				SyncMarker: []byte{0xFF},
+				Adapters:   []adapter.Adapter{},
+			},
+			input: []byte{
+				0xFF, 0x11, 0x22, 0x33,
+				0xFF, 0x44, 0x55, 0x66,
+				0xFF, 0x77, 0x88, 0x99,
+			},
+			want: [][]byte{
+				[]byte{0x11, 0x22, 0x33},
+				[]byte{0x44, 0x55, 0x66},
+				[]byte{0x77, 0x88, 0x99},
+			},
+		},
+
+		// Two frames without adapters embedded in garbage
+		{
+			SocketConfig: SocketConfig{
+				MessageMTU: 4,
+				SyncMarker: []byte{0xFF},
+				Adapters:   []adapter.Adapter{},
+			},
+			input: []byte{
+				0xAA, 0xBB, 0xCC,
+				0xFF, 0x44, 0x55, 0x66,
+				0xFF, 0x77, 0x88, 0x99,
+				0xDD, 0xEE,
+			},
+			want: [][]byte{
+				[]byte{0x44, 0x55, 0x66},
+				[]byte{0x77, 0x88, 0x99},
+			},
+		},
+
+		// Two frames with adapter
+		{
+			SocketConfig: SocketConfig{
+				MessageMTU: 8,
+				SyncMarker: []byte{0xFF},
+				Adapters: []adapter.Adapter{
+					adapter.NewCSPv1Adapter(csp.PacketHeader{}, 3),
+				},
+			},
+			input: []byte{
+				0xFF, 0x00, 0x00, 0x00, 0x00, 0x11, 0x22, 0x33,
+				0xFF, 0x00, 0x00, 0x00, 0x00, 0x44, 0x55, 0x66,
+			},
+			want: [][]byte{
+				[]byte{0x11, 0x22, 0x33},
+				[]byte{0x44, 0x55, 0x66},
+			},
+		},
+	}
+
+	for ti, tt := range tests {
+		buf := bytes.NewBuffer(tt.input)
+		sock, err := NewSocket(tt.SocketConfig, buf, nil)
+		if err != nil {
+			t.Errorf("case %d: unexpected error: %v", ti, err)
+			continue
+		}
+
+		got := [][]byte{}
+		for msg := range sock.Recv(context.Background()) {
+			got = append(got, msg)
+		}
+
+		if len(got) != len(tt.want) {
+			t.Errorf("case %d: received unexpected number of frames: got=%d want=%d", ti, len(got), len(tt.want))
+		}
+
+		for i, gotFrame := range got {
+			wantFrame := tt.want[i]
+			if !reflect.DeepEqual(gotFrame, wantFrame) {
+				t.Errorf("case %d: frame %d: incorrect content: want=% x got=% x", ti, i, wantFrame, gotFrame)
+			}
+		}
+	}
+}
+
+// Confirm basic loopback functionality mimicking a Satlab transceiver
+func TestSocketLoopback_Satlab(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+
+	cfg := SocketConfig{
+		MessageMTU: 227,
+		SyncMarker: satlab.SPACEFRAME_ASM,
+		Adapters: []adapter.Adapter{
+			adapter.NewCSPv1Adapter(csp.PacketHeader{
+				Priority:        1,
+				Source:          14,
+				Destination:     15,
+				SourcePort:      16,
+				DestinationPort: 17,
+			}, 213),
+			&adapter.SatlabSpaceframeAdapter{
+				satlab.SpaceframeConfig{
+					PayloadDataSize: 217,
+					CRCEnabled:      true,
+				},
+			},
+		},
+	}
+
+	sock, err := NewSocket(cfg, buf, buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// write message and assert sanity
+
+	msg := []byte("XXX")
+	if err := sock.Send(msg); err != nil {
+		t.Fatalf("send operation failed: %v", err)
+	}
+
+	wantWrittenLen := 227
+
+	gotWrittenBytes := buf.Bytes()
+	gotWrittenLen := len(gotWrittenBytes)
+	if gotWrittenLen != wantWrittenLen {
+		t.Fatalf("wrote incorrect number of bytes: want=%d got=%d", wantWrittenLen, gotWrittenLen)
+	}
+
+	// read back the same message and assert sanity
+
+	got := <-sock.Recv(context.Background())
+	gotReadLen := len(got)
+
+	wantReadLen := 3
+	if gotReadLen != wantReadLen {
+		t.Errorf("read incorrect number of bytes: want=%d got=%d", wantReadLen, gotReadLen)
+	}
+
+	if !reflect.DeepEqual(msg, got) {
+		t.Fatalf("read incorrect bytes: want=%x got=%x", msg, got)
 	}
 }
