@@ -21,6 +21,7 @@ import (
 
 	"github.com/antaris-inc/go-satcom/adapter"
 	csp "github.com/antaris-inc/go-satcom/csp/v1"
+	"github.com/antaris-inc/go-satcom/satlab"
 )
 
 func TestSocketSend_Success(t *testing.T) {
@@ -49,6 +50,34 @@ func TestSocketSend_Success(t *testing.T) {
 			},
 			msg:  []byte{0x11, 0x22},
 			want: []byte{0x00, 0x00, 0x00, 0x00, 0x11, 0x22},
+		},
+
+		// Send max MTU w/ two adapters
+		{
+			socket: Socket{
+				MessageMTU: 10, // msg + CSP header + spaceframe header
+				Adapters: []adapter.Adapter{
+					adapter.NewCSPv1Adapter(csp.PacketHeader{
+						Priority:        1,
+						Source:          14,
+						Destination:     15,
+						SourcePort:      16,
+						DestinationPort: 17,
+					}, 4),
+					&adapter.SatlabSpaceframeAdapter{
+						satlab.SpaceframeConfig{
+							PayloadDataSize: 8, // msg + CSP header
+						},
+					},
+				},
+			},
+			msg: []byte{0x11, 0x22},
+			want: []byte{
+				0x00, 0x06, // Spaceframe header
+				0x5c, 0xf4, 0x50, 0x00, // CSP header
+				0x11, 0x22, // original message
+				0x00, 0x00, // Spaceframe padding
+			},
 		},
 	}
 
