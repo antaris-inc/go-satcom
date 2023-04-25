@@ -101,7 +101,7 @@ func TestCSPAdapterUnwrap_Success(t *testing.T) {
 		}
 
 		if !reflect.DeepEqual(tt.want, got) {
-			t.Errorf("unexpected result: want=% x got=% x", tt.want, got)
+			t.Errorf("case %d: unexpected result: want=% x got=% x", ti, tt.want, got)
 		}
 	}
 }
