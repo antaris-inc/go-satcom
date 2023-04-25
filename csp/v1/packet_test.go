@@ -89,3 +89,12 @@ func TestPacketEncodeAndDecode(t *testing.T) {
 		t.Fatalf("unexpected result: want=%v got=%v", want, got)
 	}
 }
+
+func TestMaxPacketLength(t *testing.T) {
+	want := 217
+	got := MaxPacketLength(213)
+	if want != got {
+		t.Errorf("incorrect length: want=%d got=%d", want, got)
+	}
+
+}

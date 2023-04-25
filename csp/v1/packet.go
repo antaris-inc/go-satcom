@@ -186,9 +186,14 @@ func WritePacket(dst io.Writer, p *Packet) error {
 	return nil
 }
 
+// Returns the maximum possible packet size based on provided max data size.
+func MaxPacketLength(maxDataSize int) int {
+	return HEADER_LENGTH_BYTES + maxDataSize
+}
+
 // Initializes a new byte slice appropriate for a full CSP packet.
 func MakeBuffer(maxDataSize int) []byte {
-	return make([]byte, HEADER_LENGTH_BYTES+maxDataSize)
+	return make([]byte, MaxPacketLength(maxDataSize))
 }
 
 // Reads a CSP packet from an io.Reader using the supplied buffer. The caller should
