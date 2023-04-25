@@ -31,7 +31,7 @@ func TestSpaceframeConfigFrameSize(t *testing.T) {
 				Type:            SPACEFRAME_TYPE_CSP,
 				PayloadDataSize: 1024,
 			},
-			want: 1030,
+			want: 1026,
 		},
 
 		// with CRC enabled
@@ -40,6 +40,17 @@ func TestSpaceframeConfigFrameSize(t *testing.T) {
 				Type:            SPACEFRAME_TYPE_CSP,
 				PayloadDataSize: 1024,
 				CRCEnabled:      true,
+			},
+			want: 1030,
+		},
+
+		// with CRC and ASM enabled
+		{
+			cfg: SpaceframeConfig{
+				Type:            SPACEFRAME_TYPE_CSP,
+				PayloadDataSize: 1024,
+				CRCEnabled:      true,
+				ASMEnabled:      true,
 			},
 			want: 1034,
 		},
@@ -118,14 +129,21 @@ func TestSpaceframeEnframe(t *testing.T) {
 		{
 			msg:  []byte("XYZ"),
 			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 3},
-			want: []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a},
+			want: []byte{0x0, 0x3, 0x58, 0x59, 0x5a},
 		},
 
 		// padding added as needed
 		{
 			msg:  []byte("XYZ"),
 			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 6},
-			want: []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a, 0x0, 0x0, 0x0},
+			want: []byte{0x0, 0x3, 0x58, 0x59, 0x5a, 0x0, 0x0, 0x0},
+		},
+
+		// with ASM enabled
+		{
+			msg:  []byte("XYZ"),
+			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 3, ASMEnabled: true},
+			want: []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a},
 		},
 	}
 
@@ -178,15 +196,22 @@ func TestSpaceframeDeframe(t *testing.T) {
 	}{
 		// basic payload with type=CSP
 		{
-			frm:  []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a},
+			frm:  []byte{0x0, 0x3, 0x58, 0x59, 0x5a},
 			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 3},
 			want: []byte{0x58, 0x59, 0x5a},
 		},
 
 		// padding removed as needed
 		{
-			frm:  []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a, 0x0, 0x0, 0x0},
+			frm:  []byte{0x0, 0x3, 0x58, 0x59, 0x5a, 0x0, 0x0, 0x0},
 			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 6},
+			want: []byte{0x58, 0x59, 0x5a},
+		},
+
+		// with ASM enabled
+		{
+			frm:  []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a},
+			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 3, ASMEnabled: true},
 			want: []byte{0x58, 0x59, 0x5a},
 		},
 	}

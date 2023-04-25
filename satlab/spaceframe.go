@@ -45,11 +45,22 @@ type SpaceframeConfig struct {
 	Type            SpaceframeType
 	PayloadDataSize int
 
+	// If true, handle ASM prepend/strip. Typically
+	// this is handled out of band, so the default
+	// behavior is disabled.
+	ASMEnabled bool
+
+	// If true, append a CRC32c checksum to frames.
+	// Checksum verification is also required
+	// during deframe.
 	CRCEnabled bool
 }
 
 func (cfg *SpaceframeConfig) FrameSize() int {
-	n := SPACEFRAME_ASM_LENGTH_BYTES + SPACEFRAME_HEADER_LENGTH_BYTES + cfg.PayloadDataSize
+	n := SPACEFRAME_HEADER_LENGTH_BYTES + cfg.PayloadDataSize
+	if cfg.ASMEnabled {
+		n += SPACEFRAME_ASM_LENGTH_BYTES
+	}
 	if cfg.CRCEnabled {
 		n += CRC_CHECKSUM_LENGTH_BYTES
 	}
@@ -146,8 +157,10 @@ func Enframe(msg []byte, cfg *SpaceframeConfig) ([]byte, error) {
 		frm = applyCRC(frm)
 	}
 
-	// prepend ASM
-	frm = append(SPACEFRAME_ASM, frm...)
+	if cfg.ASMEnabled {
+		// prepend ASM
+		frm = append(SPACEFRAME_ASM, frm...)
+	}
 
 	return frm, nil
 }
@@ -157,12 +170,14 @@ func Deframe(frm []byte, cfg *SpaceframeConfig) ([]byte, error) {
 		return nil, errors.New("Spaceframe length unexpected")
 	}
 
-	if bytes.Compare(frm[:SPACEFRAME_ASM_LENGTH_BYTES], SPACEFRAME_ASM) != 0 {
-		return nil, errors.New("Spaceframe ASM missing or invalid")
-	}
+	if cfg.ASMEnabled {
+		if bytes.Compare(frm[:SPACEFRAME_ASM_LENGTH_BYTES], SPACEFRAME_ASM) != 0 {
+			return nil, errors.New("Spaceframe ASM missing or invalid")
+		}
 
-	// strip ASM
-	frm = frm[SPACEFRAME_ASM_LENGTH_BYTES:]
+		// strip ASM
+		frm = frm[SPACEFRAME_ASM_LENGTH_BYTES:]
+	}
 
 	var err error
 	if cfg.CRCEnabled {
