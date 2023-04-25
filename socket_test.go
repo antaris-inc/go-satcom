@@ -26,36 +26,38 @@ import (
 
 func TestSocketSend_Success(t *testing.T) {
 	tests := []struct {
-		socket Socket
-		msg    []byte
-		want   []byte
+		SocketConfig
+		msg  []byte
+		want []byte
 	}{
 		// Send max MTU w/o adapters
 		{
-			socket: Socket{
-				MessageMTU: 3,
+			SocketConfig: SocketConfig{
+				MessageMTU: 4,
 				Adapters:   nil,
+				SyncMarker: []byte{0xFF},
 			},
 			msg:  []byte{0x11, 0x22, 0x33},
-			want: []byte{0x11, 0x22, 0x33},
+			want: []byte{0xFF, 0x11, 0x22, 0x33},
 		},
 
 		// Send max MTU w/ one adapter
 		{
-			socket: Socket{
-				MessageMTU: 6,
+			SocketConfig: SocketConfig{
+				MessageMTU: 7,
 				Adapters: []adapter.Adapter{
 					adapter.NewCSPv1Adapter(csp.PacketHeader{}, 2),
 				},
+				SyncMarker: []byte{0xFF},
 			},
 			msg:  []byte{0x11, 0x22},
-			want: []byte{0x00, 0x00, 0x00, 0x00, 0x11, 0x22},
+			want: []byte{0xFF, 0x00, 0x00, 0x00, 0x00, 0x11, 0x22},
 		},
 
 		// Send max MTU w/ two adapters
 		{
-			socket: Socket{
-				MessageMTU: 10, // msg + CSP header + spaceframe header
+			SocketConfig: SocketConfig{
+				MessageMTU: 11, // msg + CSP header + spaceframe header + ASM
 				Adapters: []adapter.Adapter{
 					adapter.NewCSPv1Adapter(csp.PacketHeader{
 						Priority:        1,
@@ -70,9 +72,11 @@ func TestSocketSend_Success(t *testing.T) {
 						},
 					},
 				},
+				SyncMarker: []byte{0xFF},
 			},
 			msg: []byte{0x11, 0x22},
 			want: []byte{
+				0xFF,       // ASM
 				0x00, 0x06, // Spaceframe header
 				0x5c, 0xf4, 0x50, 0x00, // CSP header
 				0x11, 0x22, // original message
@@ -83,8 +87,12 @@ func TestSocketSend_Success(t *testing.T) {
 
 	for ti, tt := range tests {
 		buf := bytes.NewBuffer(nil)
-		tt.socket.Writer = buf
-		if err := tt.socket.Send(tt.msg); err != nil {
+		sock, err := NewSocket(tt.SocketConfig, buf)
+		if err != nil {
+			t.Errorf("case %d: failed constructing Socket: %v", ti, err)
+			continue
+		}
+		if err := sock.Send(tt.msg); err != nil {
 			t.Errorf("case %d: unexpected error: %v", ti, err)
 		}
 		got := buf.Bytes()
@@ -96,25 +104,27 @@ func TestSocketSend_Success(t *testing.T) {
 
 func TestSocketSend_Failure(t *testing.T) {
 	tests := []struct {
-		socket Socket
-		msg    []byte
+		SocketConfig
+		msg []byte
 	}{
 		// Send over MTU w/o adapters
 		{
-			socket: Socket{
-				MessageMTU: 2,
+			SocketConfig: SocketConfig{
+				MessageMTU: 3,
 				Adapters:   nil,
+				SyncMarker: []byte{0xFF},
 			},
 			msg: []byte{0x11, 0x22, 0x33},
 		},
 
 		// Send over MTU w/ one adapter
 		{
-			socket: Socket{
-				MessageMTU: 5,
+			SocketConfig: SocketConfig{
+				MessageMTU: 6,
 				Adapters: []adapter.Adapter{
 					adapter.NewCSPv1Adapter(csp.PacketHeader{}, 2),
 				},
+				SyncMarker: []byte{0xFF},
 			},
 			msg: []byte{0x11, 0x22, 0x33},
 		},
@@ -122,8 +132,12 @@ func TestSocketSend_Failure(t *testing.T) {
 
 	for ti, tt := range tests {
 		buf := bytes.NewBuffer(nil)
-		tt.socket.Writer = buf
-		if err := tt.socket.Send(tt.msg); err == nil {
+		sock, err := NewSocket(tt.SocketConfig, buf)
+		if err != nil {
+			t.Errorf("case %d: failed constructing Socket: %v", ti, err)
+			continue
+		}
+		if err := sock.Send(tt.msg); err == nil {
 			t.Errorf("case %d: expected non-nil error", ti)
 		}
 	}

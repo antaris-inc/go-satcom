@@ -21,31 +21,47 @@ import (
 	"github.com/antaris-inc/go-satcom/adapter"
 )
 
-type Socket struct {
-	Writer io.Writer
-
-	MessageMTU int
+type SocketConfig struct {
+	SyncMarker []byte
 	Adapters   []adapter.Adapter
+	MessageMTU int
+}
 
-	err error
+func NewSocket(cfg SocketConfig, uplink io.Writer) (*Socket, error) {
+	if len(cfg.SyncMarker) == 0 {
+		return nil, errors.New("SyncMarker must be provided")
+	}
+
+	sock := Socket{
+		writer: uplink,
+		cfg:    cfg,
+	}
+	return &sock, nil
+}
+
+type Socket struct {
+	writer io.Writer
+	cfg    SocketConfig
 }
 
 func (c *Socket) Send(msg []byte) error {
 	enc := msg
 	var err error
-	for _, ad := range c.Adapters {
+	for _, ad := range c.cfg.Adapters {
 		enc, err = ad.Wrap(enc)
 		if err != nil {
 			return err
 		}
 	}
 
+	enc = append(c.cfg.SyncMarker, enc...)
+
 	encLen := len(enc)
-	if encLen > c.MessageMTU {
+	if encLen > c.cfg.MessageMTU {
 		return errors.New("encoded message exceeds MTU")
 	}
 
-	n, err := c.Writer.Write(enc)
+	n, err := c.writer.Write(enc)
 	if err != nil {
 		return err
 	}
