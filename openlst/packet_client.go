@@ -20,12 +20,12 @@ import (
 )
 
 var (
-	VEHICLE_PACKET_ASM = []byte{0x22, 0x69}
+	CLIENT_PACKET_ASM = []byte{0x22, 0x69}
 
-	VEHICLE_PACKET_HEADER_LENGTH = 7
+	CLIENT_PACKET_HEADER_LENGTH = 7
 )
 
-type VehiclePacketHeader struct {
+type ClientPacketHeader struct {
 	// Field 1
 	Length int
 
@@ -42,7 +42,7 @@ type VehiclePacketHeader struct {
 	CommandNumber int
 }
 
-func (p *VehiclePacketHeader) Err() error {
+func (p *ClientPacketHeader) Err() error {
 	//TODO(bcwaldon): confirm length bounds
 	if p.Length < 7 || p.Length > 251 {
 		return errors.New("Length must be 7-251")
@@ -62,8 +62,8 @@ func (p *VehiclePacketHeader) Err() error {
 	return nil
 }
 
-func (p *VehiclePacketHeader) ToBytes() []byte {
-	bs := make([]byte, VEHICLE_PACKET_HEADER_LENGTH)
+func (p *ClientPacketHeader) ToBytes() []byte {
+	bs := make([]byte, CLIENT_PACKET_HEADER_LENGTH)
 
 	bs[0] = byte(p.Length)
 	binary.LittleEndian.PutUint16(bs[1:3], uint16(p.HardwareID))
@@ -74,8 +74,8 @@ func (p *VehiclePacketHeader) ToBytes() []byte {
 	return bs
 }
 
-func (p *VehiclePacketHeader) FromBytes(bs []byte) error {
-	if len(bs) != VEHICLE_PACKET_HEADER_LENGTH {
+func (p *ClientPacketHeader) FromBytes(bs []byte) error {
+	if len(bs) != CLIENT_PACKET_HEADER_LENGTH {
 		return errors.New("unexpected header length")
 	}
 
@@ -88,17 +88,17 @@ func (p *VehiclePacketHeader) FromBytes(bs []byte) error {
 	return nil
 }
 
-type VehiclePacket struct {
-	VehiclePacketHeader
+type ClientPacket struct {
+	ClientPacketHeader
 	Data []byte
 }
 
 // Validates packet content, returning non-nil error if any issues detected.
-func (p *VehiclePacket) Err() error {
-	if err := p.VehiclePacketHeader.Err(); err != nil {
+func (p *ClientPacket) Err() error {
+	if err := p.ClientPacketHeader.Err(); err != nil {
 		return err
 	}
-	if p.VehiclePacketHeader.Length != VEHICLE_PACKET_HEADER_LENGTH+len(p.Data) {
+	if p.ClientPacketHeader.Length != CLIENT_PACKET_HEADER_LENGTH+len(p.Data) {
 		return errors.New("packet length unequal to header length")
 	}
 
@@ -106,45 +106,45 @@ func (p *VehiclePacket) Err() error {
 }
 
 // Encodes packet to byte slice, including header and data.
-func (p *VehiclePacket) ToBytes() []byte {
-	buf := make([]byte, p.VehiclePacketHeader.Length)
-	copy(buf, p.VehiclePacketHeader.ToBytes())
-	copy(buf[VEHICLE_PACKET_HEADER_LENGTH:], p.Data)
+func (p *ClientPacket) ToBytes() []byte {
+	buf := make([]byte, p.ClientPacketHeader.Length)
+	copy(buf, p.ClientPacketHeader.ToBytes())
+	copy(buf[CLIENT_PACKET_HEADER_LENGTH:], p.Data)
 	return buf
 }
 
 // Hydrates Packet from provided byte slice, returning non-nil if any
 // issues are encountered.
-func (p *VehiclePacket) FromBytes(bs []byte) error {
-	if len(bs) < VEHICLE_PACKET_HEADER_LENGTH {
+func (p *ClientPacket) FromBytes(bs []byte) error {
+	if len(bs) < CLIENT_PACKET_HEADER_LENGTH {
 		return errors.New("insufficient data")
 	}
 
-	var ph VehiclePacketHeader
-	if err := ph.FromBytes(bs[0:VEHICLE_PACKET_HEADER_LENGTH]); err != nil {
+	var ph ClientPacketHeader
+	if err := ph.FromBytes(bs[0:CLIENT_PACKET_HEADER_LENGTH]); err != nil {
 		return err
 	}
 
-	p.VehiclePacketHeader = ph
-	p.Data = bs[VEHICLE_PACKET_HEADER_LENGTH:]
+	p.ClientPacketHeader = ph
+	p.Data = bs[CLIENT_PACKET_HEADER_LENGTH:]
 
 	return nil
 }
 
-// Constructs a new VehiclePacket using provided header and data inputs.
+// Constructs a new ClientPacket using provided header and data inputs.
 //
 // The header length field is automatically set based on the length of
 // the provided data.
 //
 // The packet returned must be confirmed as valid by the client before
 // further use.
-func NewVehiclePacket(hdr VehiclePacketHeader, dat []byte) *VehiclePacket {
-	p := VehiclePacket{
-		VehiclePacketHeader: hdr,
-		Data:                dat,
+func NewClientPacket(hdr ClientPacketHeader, dat []byte) *ClientPacket {
+	p := ClientPacket{
+		ClientPacketHeader: hdr,
+		Data:               dat,
 	}
 
-	p.VehiclePacketHeader.Length = VEHICLE_PACKET_HEADER_LENGTH + len(dat)
+	p.ClientPacketHeader.Length = CLIENT_PACKET_HEADER_LENGTH + len(dat)
 
 	return &p
 }

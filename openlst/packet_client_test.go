@@ -19,8 +19,8 @@ import (
 	"testing"
 )
 
-func TestVehiclePacketHeaderEncode(t *testing.T) {
-	ph := VehiclePacketHeader{
+func TestClientPacketHeaderEncode(t *testing.T) {
+	ph := ClientPacketHeader{
 		Length:         10,
 		HardwareID:     755,
 		SequenceNumber: 12,
@@ -40,10 +40,10 @@ func TestVehiclePacketHeaderEncode(t *testing.T) {
 	}
 }
 
-func TestVehiclePacketHeaderDecode(t *testing.T) {
+func TestClientPacketHeaderDecode(t *testing.T) {
 	hdr := []byte{0x0d, 0xff, 0x03, 0x04, 0x00, 0xfd, 0x38}
 
-	want := VehiclePacketHeader{
+	want := ClientPacketHeader{
 		Length:         13,
 		HardwareID:     1023,
 		SequenceNumber: 4,
@@ -51,7 +51,7 @@ func TestVehiclePacketHeaderDecode(t *testing.T) {
 		CommandNumber:  56,
 	}
 
-	got := VehiclePacketHeader{}
+	got := ClientPacketHeader{}
 	if err := got.FromBytes(hdr); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,11 +61,11 @@ func TestVehiclePacketHeaderDecode(t *testing.T) {
 	}
 }
 
-func TestNewVehiclePacketToBytes_SmallFrame(t *testing.T) {
+func TestNewClientPacketToBytes_SmallFrame(t *testing.T) {
 	dat := []byte{0x0a, 0x0b, 0x0c, 0x0d}
 
-	p := NewVehiclePacket(
-		VehiclePacketHeader{
+	p := NewClientPacket(
+		ClientPacketHeader{
 			HardwareID:     1023,
 			SequenceNumber: 1,
 			Destination:    253,
@@ -84,11 +84,11 @@ func TestNewVehiclePacketToBytes_SmallFrame(t *testing.T) {
 	}
 }
 
-func TestNewVehiclePacketToBytes_TooMuchData(t *testing.T) {
+func TestNewClientPacketToBytes_TooMuchData(t *testing.T) {
 	dat := make([]byte, 1024)
 
-	p := NewVehiclePacket(
-		VehiclePacketHeader{
+	p := NewClientPacket(
+		ClientPacketHeader{
 			HardwareID:     1023,
 			SequenceNumber: 1,
 			Destination:    253,
@@ -101,10 +101,10 @@ func TestNewVehiclePacketToBytes_TooMuchData(t *testing.T) {
 	}
 }
 
-func TestVehiclePacketFromBytes_SmallFrame(t *testing.T) {
+func TestClientPacketFromBytes_SmallFrame(t *testing.T) {
 	val := []byte{0x0a, 0xff, 0x03, 0x04, 0x00, 0xfd, 0x38, 0x01, 0x02, 0x03}
 
-	p := VehiclePacket{}
+	p := ClientPacket{}
 	if err := p.FromBytes(val); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -119,10 +119,10 @@ func TestVehiclePacketFromBytes_SmallFrame(t *testing.T) {
 	}
 }
 
-func TestVehiclePacketFromBytes_EmptyFrame(t *testing.T) {
+func TestClientPacketFromBytes_EmptyFrame(t *testing.T) {
 	val := []byte{0x07, 0xff, 0x03, 0x04, 0x00, 0xfd, 0x38}
 
-	p := VehiclePacket{}
+	p := ClientPacket{}
 	if err := p.FromBytes(val); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
