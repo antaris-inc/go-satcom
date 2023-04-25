@@ -27,3 +27,7 @@ jobs:
     - name: Run unit tests
       run: |
         go test ./...
+
+    - name: Run e2e tests
+      run: |
+        ./test/run-e2e.sh
