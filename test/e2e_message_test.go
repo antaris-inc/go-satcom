@@ -25,7 +25,7 @@ func dialOrSkip(t *testing.T, env string) (net.Conn, error) {
 	return d.DialContext(ctx, "tcp", uplinkAddr)
 }
 
-func TestE2ESocket_Loopback(t *testing.T) {
+func TestE2EMessage_Loopback(t *testing.T) {
 	uplink, err := dialOrSkip(t, "TEST_E2E_UPLINK_ADDRESS")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -38,9 +38,9 @@ func TestE2ESocket_Loopback(t *testing.T) {
 	}
 	defer downlink.Close()
 
-	cfg := satcom.SocketConfig{
-		MessageMTU: 227,
-		SyncMarker: satlab.SPACEFRAME_ASM,
+	cfg := satcom.MessageConfig{
+		FrameMTU:        227,
+		FrameSyncMarker: satlab.SPACEFRAME_ASM,
 		Adapters: []adapter.Adapter{
 			adapter.NewCSPv1Adapter(csp.PacketHeader{
 				Priority:        1,
@@ -58,27 +58,35 @@ func TestE2ESocket_Loopback(t *testing.T) {
 		},
 	}
 
-	sock, err := satcom.NewSocket(cfg, downlink, uplink)
+	ms, err := satcom.NewMessageSender(cfg, uplink)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	mr, err := satcom.NewMessageReceiver(cfg, downlink)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+	ch := make(chan []byte)
+	go mr.Receive(ctx, ch)
+
 	// write message
 
 	msg := []byte("HELLO WORLD")
-	if err := sock.Send(msg); err != nil {
+	if err := ms.Send(msg); err != nil {
 		t.Fatalf("send operation failed: %v", err)
 	}
 
 	// Then read back the same message and assert the message loops back.
-	// We cannot rely on Recv stopping on its own due to a cancelled context
+	// We cannot rely on Receive stopping on its own due to a cancelled context
 	// since the context is not carried through the underlying Read operation.
 
 	var got []byte
 
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 	select {
-	case got = <-sock.Recv(context.Background()):
+	case got = <-ch:
 	case <-ctx.Done():
 		t.Fatalf("failed to read message in time: %v", ctx.Err())
 	}

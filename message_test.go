@@ -19,24 +19,25 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/antaris-inc/go-satcom/adapter"
 	csp "github.com/antaris-inc/go-satcom/csp/v1"
 	"github.com/antaris-inc/go-satcom/satlab"
 )
 
-func TestSocketSend_Success(t *testing.T) {
+func TestMessageSender_Success(t *testing.T) {
 	tests := []struct {
-		SocketConfig
+		MessageConfig
 		msg  []byte
 		want []byte
 	}{
 		// Send max MTU w/o adapters
 		{
-			SocketConfig: SocketConfig{
-				MessageMTU: 4,
-				Adapters:   nil,
-				SyncMarker: []byte{0xFF},
+			MessageConfig: MessageConfig{
+				FrameMTU:        4,
+				FrameSyncMarker: []byte{0xFF},
+				Adapters:        nil,
 			},
 			msg:  []byte{0x11, 0x22, 0x33},
 			want: []byte{0xFF, 0x11, 0x22, 0x33},
@@ -44,12 +45,12 @@ func TestSocketSend_Success(t *testing.T) {
 
 		// Send max MTU w/ one adapter
 		{
-			SocketConfig: SocketConfig{
-				MessageMTU: 7,
+			MessageConfig: MessageConfig{
+				FrameMTU:        7,
+				FrameSyncMarker: []byte{0xFF},
 				Adapters: []adapter.Adapter{
 					adapter.NewCSPv1Adapter(csp.PacketHeader{}, 2),
 				},
-				SyncMarker: []byte{0xFF},
 			},
 			msg:  []byte{0x11, 0x22},
 			want: []byte{0xFF, 0x00, 0x00, 0x00, 0x00, 0x11, 0x22},
@@ -57,8 +58,9 @@ func TestSocketSend_Success(t *testing.T) {
 
 		// Send max MTU w/ two adapters
 		{
-			SocketConfig: SocketConfig{
-				MessageMTU: 11, // msg + CSP header + spaceframe header + ASM
+			MessageConfig: MessageConfig{
+				FrameMTU:        11, // msg + CSP header + spaceframe header + ASM
+				FrameSyncMarker: []byte{0xFF},
 				Adapters: []adapter.Adapter{
 					adapter.NewCSPv1Adapter(csp.PacketHeader{
 						Priority:        1,
@@ -73,7 +75,6 @@ func TestSocketSend_Success(t *testing.T) {
 						},
 					},
 				},
-				SyncMarker: []byte{0xFF},
 			},
 			msg: []byte{0x11, 0x22},
 			want: []byte{
@@ -88,12 +89,12 @@ func TestSocketSend_Success(t *testing.T) {
 
 	for ti, tt := range tests {
 		buf := bytes.NewBuffer(nil)
-		sock, err := NewSocket(tt.SocketConfig, nil, buf)
+		ms, err := NewMessageSender(tt.MessageConfig, buf)
 		if err != nil {
-			t.Errorf("case %d: failed constructing Socket: %v", ti, err)
+			t.Errorf("case %d: failed constructing MessageSender: %v", ti, err)
 			continue
 		}
-		if err := sock.Send(tt.msg); err != nil {
+		if err := ms.Send(tt.msg); err != nil {
 			t.Errorf("case %d: unexpected error: %v", ti, err)
 		}
 		got := buf.Bytes()
@@ -103,29 +104,29 @@ func TestSocketSend_Success(t *testing.T) {
 	}
 }
 
-func TestSocketSend_Failure(t *testing.T) {
+func TestMessageSender_Failure(t *testing.T) {
 	tests := []struct {
-		SocketConfig
+		MessageConfig
 		msg []byte
 	}{
 		// Send over MTU w/o adapters
 		{
-			SocketConfig: SocketConfig{
-				MessageMTU: 3,
-				Adapters:   nil,
-				SyncMarker: []byte{0xFF},
+			MessageConfig: MessageConfig{
+				FrameMTU:        3,
+				FrameSyncMarker: []byte{0xFF},
+				Adapters:        nil,
 			},
 			msg: []byte{0x11, 0x22, 0x33},
 		},
 
 		// Send over MTU w/ one adapter
 		{
-			SocketConfig: SocketConfig{
-				MessageMTU: 6,
+			MessageConfig: MessageConfig{
+				FrameMTU:        6,
+				FrameSyncMarker: []byte{0xFF},
 				Adapters: []adapter.Adapter{
 					adapter.NewCSPv1Adapter(csp.PacketHeader{}, 2),
 				},
-				SyncMarker: []byte{0xFF},
 			},
 			msg: []byte{0x11, 0x22, 0x33},
 		},
@@ -133,29 +134,29 @@ func TestSocketSend_Failure(t *testing.T) {
 
 	for ti, tt := range tests {
 		buf := bytes.NewBuffer(nil)
-		sock, err := NewSocket(tt.SocketConfig, nil, buf)
+		ms, err := NewMessageSender(tt.MessageConfig, buf)
 		if err != nil {
 			t.Errorf("case %d: failed constructing Socket: %v", ti, err)
 			continue
 		}
-		if err := sock.Send(tt.msg); err == nil {
+		if err := ms.Send(tt.msg); err == nil {
 			t.Errorf("case %d: expected non-nil error", ti)
 		}
 	}
 }
 
-func TestSocketRecv_Success(t *testing.T) {
+func TestMessageReceiver_Success(t *testing.T) {
 	tests := []struct {
-		SocketConfig
+		MessageConfig
 		input []byte
 		want  [][]byte
 	}{
 		// Three frames without adapters
 		{
-			SocketConfig: SocketConfig{
-				MessageMTU: 4,
-				SyncMarker: []byte{0xFF},
-				Adapters:   []adapter.Adapter{},
+			MessageConfig: MessageConfig{
+				FrameMTU:        4,
+				FrameSyncMarker: []byte{0xFF},
+				Adapters:        []adapter.Adapter{},
 			},
 			input: []byte{
 				0xFF, 0x11, 0x22, 0x33,
@@ -171,10 +172,10 @@ func TestSocketRecv_Success(t *testing.T) {
 
 		// Two frames without adapters embedded in garbage
 		{
-			SocketConfig: SocketConfig{
-				MessageMTU: 4,
-				SyncMarker: []byte{0xFF},
-				Adapters:   []adapter.Adapter{},
+			MessageConfig: MessageConfig{
+				FrameMTU:        4,
+				FrameSyncMarker: []byte{0xFF},
+				Adapters:        []adapter.Adapter{},
 			},
 			input: []byte{
 				0xAA, 0xBB, 0xCC,
@@ -190,9 +191,9 @@ func TestSocketRecv_Success(t *testing.T) {
 
 		// Two frames with adapter
 		{
-			SocketConfig: SocketConfig{
-				MessageMTU: 8,
-				SyncMarker: []byte{0xFF},
+			MessageConfig: MessageConfig{
+				FrameMTU:        8,
+				FrameSyncMarker: []byte{0xFF},
 				Adapters: []adapter.Adapter{
 					adapter.NewCSPv1Adapter(csp.PacketHeader{}, 3),
 				},
@@ -210,37 +211,46 @@ func TestSocketRecv_Success(t *testing.T) {
 
 	for ti, tt := range tests {
 		buf := bytes.NewBuffer(tt.input)
-		sock, err := NewSocket(tt.SocketConfig, buf, nil)
+		mr, err := NewMessageReceiver(tt.MessageConfig, buf)
 		if err != nil {
 			t.Errorf("case %d: unexpected error: %v", ti, err)
 			continue
 		}
 
-		got := [][]byte{}
-		for msg := range sock.Recv(context.Background()) {
-			got = append(got, msg)
-		}
+		ch := make(chan []byte)
+		go mr.Receive(context.Background(), ch)
 
-		if len(got) != len(tt.want) {
-			t.Errorf("case %d: received unexpected number of frames: got=%d want=%d", ti, len(got), len(tt.want))
-		}
-
-		for i, gotFrame := range got {
-			wantFrame := tt.want[i]
-			if !reflect.DeepEqual(gotFrame, wantFrame) {
-				t.Errorf("case %d: frame %d: incorrect content: want=% x got=% x", ti, i, wantFrame, gotFrame)
+		// iterate through expected frames and ensure we get a matching
+		// frame from the receive channel
+		for i := range tt.want {
+			ctx, _ := context.WithTimeout(context.Background(), time.Second)
+			select {
+			case got := <-ch:
+				if !reflect.DeepEqual(got, tt.want[i]) {
+					t.Errorf("case %d: frame %d: incorrect content: want=% x got=% x", ti, i, tt.want[i], got)
+				}
+			case <-ctx.Done():
+				t.Errorf("case %d: failed to read expected frame %d in time", ti, i)
 			}
 		}
+
+		// confirm no more frames are available
+		select {
+		case got := <-ch:
+			t.Errorf("case %d: received unexpected additional frame: % x", ti, got)
+		default:
+		}
+
 	}
 }
 
 // Confirm basic loopback functionality mimicking a Satlab transceiver
-func TestSocketLoopback_Satlab(t *testing.T) {
+func TestMessageLoopback_Satlab(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 
-	cfg := SocketConfig{
-		MessageMTU: 227,
-		SyncMarker: satlab.SPACEFRAME_ASM,
+	cfg := MessageConfig{
+		FrameMTU:        227,
+		FrameSyncMarker: satlab.SPACEFRAME_ASM,
 		Adapters: []adapter.Adapter{
 			adapter.NewCSPv1Adapter(csp.PacketHeader{
 				Priority:        1,
@@ -258,15 +268,25 @@ func TestSocketLoopback_Satlab(t *testing.T) {
 		},
 	}
 
-	sock, err := NewSocket(cfg, buf, buf)
+	ms, err := NewMessageSender(cfg, buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	mr, err := NewMessageReceiver(cfg, buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// start receiving
+
+	ch := make(chan []byte, 1)
+	go mr.Receive(context.Background(), ch)
+
 	// write message and assert sanity
 
 	msg := []byte("XXX")
-	if err := sock.Send(msg); err != nil {
+	if err := ms.Send(msg); err != nil {
 		t.Fatalf("send operation failed: %v", err)
 	}
 
@@ -280,7 +300,7 @@ func TestSocketLoopback_Satlab(t *testing.T) {
 
 	// read back the same message and assert sanity
 
-	got := <-sock.Recv(context.Background())
+	got := <-ch
 	gotReadLen := len(got)
 
 	wantReadLen := 3
