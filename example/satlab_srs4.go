@@ -16,8 +16,8 @@ import (
 func MakeSatlabSRS4FrameConfig() (satcom.FrameConfig, error) {
 	// Set up the base config with the proper MTU and ASM
 	cfg := satcom.FrameConfig{
-		FrameMTU:        227,
 		FrameSyncMarker: satlab.SATLAB_ASM,
+		FrameSize:       223,
 	}
 
 	// First adapter is the basic Satlab SpaceFrame, which prepends
@@ -51,7 +51,7 @@ func MakeSatlabSRS4FrameConfig() (satcom.FrameConfig, error) {
 // Use the example Satlab SRS4 FrameConfig to generate a idleframe using
 // an empty payload. Any additional features will be applied correctly
 // but the SRS4 tranceiver will discard it upon receipt due to a lack
-// of payload data.
+// of payload data. This does NOT include the ASM
 func NewSatlabSRS4IdleFrame_Empty() ([]byte, error) {
 	cfg, err := MakeSatlabSRS4FrameConfig()
 	if err != nil {
@@ -68,29 +68,19 @@ func NewSatlabSRS4IdleFrame_Empty() ([]byte, error) {
 		return nil, err
 	}
 
-	return buf.Bytes(), nil
+	return buf.Bytes()[len(cfg.FrameSyncMarker):], nil
 }
 
 // Generates an idle frame using randomized data. This method results in an
 // invalid CRC checksum, which will then cause the SRS4 trancevier to discard
 // the frame altogether. This approach is less commonly used than the "empty"
-// approach documented above.
+// approach documented above. This does NOT include the ASM.
 func NewSatlabSRS4IdleFrame_Rand() ([]byte, error) {
-	cfg, err := MakeSatlabSRS4FrameConfig()
-	if err != nil {
-		return nil, err
-	}
+	// Just need this for FrameSize value
+	cfg, _ := MakeSatlabSRS4FrameConfig()
 
-	frm := make([]byte, cfg.FrameMTU)
-
-	n := copy(frm[0:len(cfg.FrameSyncMarker)], cfg.FrameSyncMarker)
-	if n != len(cfg.FrameSyncMarker) {
-		return nil, errors.New("ASM copy failed")
-	}
-
-	rem := cfg.FrameMTU - n
-
-	n, err = rand.Read(frm[n:])
+	frm := make([]byte, cfg.FrameSize)
+	n, err = rand.Read(frm)
 	if err != nil {
 		return nil, fmt.Errorf("rand read failed: %v", err)
 	} else if n != rem {
