@@ -47,8 +47,8 @@ func testE2EFrameLoopback(t *testing.T, cfg satcom.FrameConfig) {
 	}
 
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-	ch := make(chan []byte)
-	go fr.Receive(ctx, ch)
+	msgC := make(chan []byte)
+	go fr.Receive(ctx, msgC, nil)
 
 	// write message
 
@@ -64,7 +64,7 @@ func testE2EFrameLoopback(t *testing.T, cfg satcom.FrameConfig) {
 	var got []byte
 
 	select {
-	case got = <-ch:
+	case got = <-msgC:
 	case <-ctx.Done():
 		t.Fatalf("failed to read message in time: %v", ctx.Err())
 	}

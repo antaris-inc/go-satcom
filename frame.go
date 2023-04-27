@@ -128,29 +128,30 @@ type FrameReceiver struct {
 	err error
 }
 
-// Forwards received frames to provided channel.
+// Forward received frames to provided channel.
 // This function is designed to be called within a goroutine.
+// A caller must use Receive to actually start reading from
+// the source.
 //
-// Receiving does not begin automatically when the FrameReceiver
-// is created. A caller must use Receive to actually start reading
-// from the source.
+// A call to Receive will continue until the upstream source
+// is depleted, indicated by an io.EOF error. A user may also
+// cancel the Receive operation prematurely by closing the
+// provided Context.
 //
-// If a nonrecoverable error is encountered, this function will
-// exit after storing the error on the object. The error will
-// be accessible through a subsequent call to Err().
-//
-// If the provided Context is cancelled or the provided channel
-// is closed, the Receive method will exit.
-func (r *FrameReceiver) Receive(ctx context.Context, ch chan<- []byte) {
+// If a caller provides a non-nil error channel, any errors
+// encountered within the frame processor will be sent to it.
+// This channel is used synchronously, so a caller MUST read
+// from it to unblock frame reception following an error.
+func (r *FrameReceiver) Receive(ctx context.Context, msgC chan<- []byte, errC chan<- error) {
 	frameReader := NewFrameReader(r.src, r.cfg.FrameSyncMarker, r.cfg.FrameSize)
-
 	wantN := len(r.cfg.FrameSyncMarker) + r.cfg.FrameSize
 
-	for {
-		// seek to next sync marker
-		if err := frameReader.Seek(); err != nil && err != io.EOF {
-			r.err = fmt.Errorf("read failure: %v", err)
-			return
+	readFrame := func() ([]byte, error) { // Seek to next sync marker
+		if err := frameReader.Seek(); err != nil {
+			if err == io.EOF {
+				return nil, err
+			}
+			return nil, fmt.Errorf("read failure: %v", err)
 		}
 
 		// now ready sync marker and full frame
@@ -158,32 +159,18 @@ func (r *FrameReceiver) Receive(ctx context.Context, ch chan<- []byte) {
 		n, err := frameReader.Read(frm)
 		if err != nil {
 			if err == io.EOF {
-				return
+				return nil, err
 			}
 
-			//TODO(bcwaldon): determine if this behavior is acceptable
-			r.err = fmt.Errorf("read failure: %v", err)
-			return
+			return nil, fmt.Errorf("read failure: %v", err)
 		}
 
-		// Before proceeding further, we also need to check
-		// if the context was cancelled. This could have triggered
-		// an empty read in an effort to gracefully shut down.
-		select {
-		case <-ctx.Done():
-			r.err = ctx.Err()
-			return
-		default:
-		}
+		//TODO(bcwaldon): decide whether or not to check for canceled context again
 
 		if n == 0 {
-			//TODO(bcwaldon): determine if this behavior is acceptable
-			r.err = errors.New("read failure: empty read operation")
-			return
+			return nil, errors.New("read failure: empty read operation")
 		} else if n != wantN {
-			//TODO(bcwaldon): determine if this behavior is acceptable
-			r.err = errors.New("read failure: partial read")
-			return
+			return nil, errors.New("read failure: partial read")
 		}
 
 		// must strip leading sync marker
@@ -193,19 +180,48 @@ func (r *FrameReceiver) Receive(ctx context.Context, ch chan<- []byte) {
 		for i := len(r.cfg.Adapters) - 1; i >= 0; i-- {
 			msg, err = r.cfg.Adapters[i].Unwrap(msg)
 			if err != nil {
-				//TODO(bcwaldon): determine if this behavior is acceptable - probably not!
-				r.err = fmt.Errorf("message decode failure: %v", err)
-				return
+				return nil, fmt.Errorf("decode failure: %v", err)
+
 			}
 		}
 
-		//TODO(bcwaldon): handle send to closed/full channel
-		ch <- msg
+		return msg, nil
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		msg, err := readFrame()
+		if err != nil {
+			// signal to shut down, as the source is depleted
+			if err == io.EOF {
+				return
+			}
+
+			// Send an error back to the user if they provided a
+			// channel for it. This allows the user to decide whether
+			// or not to shut down the Receiver. The send operation
+			// may block, which could have detrimental effects on
+			// the upstream data source, but does give more control.
+			if errC != nil {
+				errC <- err
+			}
+
+			continue
+		}
+
+		select {
+		// This send op may block, but it is up to the caller to
+		// decide how to handle it.
+		case msgC <- msg:
+		case <-ctx.Done():
+			return
+		}
 	}
 
 	return
-}
-
-func (r *FrameReceiver) Err() error {
-	return r.err
 }

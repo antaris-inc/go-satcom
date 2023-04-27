@@ -19,7 +19,6 @@ import (
 	"context"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/antaris-inc/go-satcom/crc"
 	"github.com/antaris-inc/go-satcom/satlab"
@@ -154,8 +153,9 @@ func TestFrameReceiver_Success(t *testing.T) {
 
 	tests := []struct {
 		FrameConfig
-		input []byte
-		want  [][]byte
+		input          []byte
+		wantMessages   [][]byte
+		wantErrorCount int
 	}{
 		// Three frames without adapters
 		{
@@ -169,7 +169,7 @@ func TestFrameReceiver_Success(t *testing.T) {
 				0xFF, 0x44, 0x55, 0x66,
 				0xFF, 0x77, 0x88, 0x99,
 			},
-			want: [][]byte{
+			wantMessages: [][]byte{
 				[]byte{0x11, 0x22, 0x33},
 				[]byte{0x44, 0x55, 0x66},
 				[]byte{0x77, 0x88, 0x99},
@@ -189,7 +189,7 @@ func TestFrameReceiver_Success(t *testing.T) {
 				0xFF, 0x77, 0x88, 0x99,
 				0xDD, 0xEE,
 			},
-			want: [][]byte{
+			wantMessages: [][]byte{
 				[]byte{0x44, 0x55, 0x66},
 				[]byte{0x77, 0x88, 0x99},
 			},
@@ -208,10 +208,35 @@ func TestFrameReceiver_Success(t *testing.T) {
 				0xFF, 0x11, 0x22, 0x1C, 0x80, 0xE0, 0x0D,
 				0xFF, 0x33, 0x44, 0x03, 0x29, 0x47, 0x6b,
 			},
-			want: [][]byte{
+			wantMessages: [][]byte{
 				[]byte{0x11, 0x22},
 				[]byte{0x33, 0x44},
 			},
+		},
+
+		// Two frames with adapter
+		{
+			FrameConfig: FrameConfig{
+				FrameSyncMarker: []byte{0xFF},
+				FrameSize:       6,
+				Adapters: []Adapter{
+					crc32Adapter,
+				},
+			},
+			input: []byte{
+				0x00, 0x01, 0x02, 0x03, // garbage
+				0xFF, 0x11, 0x22, 0x1C, 0x80, 0xE0, 0x0D, // good frame
+				0xFF, 0x33, 0x44, 0x03, 0x29, 0x47, 0x6b, // good frame
+				0xFF, 0x33, 0x44, 0x03, 0x29, 0x99, 0x99, // bad frame (checksum)
+				0xFF, 0x11, 0x22, 0x1C, 0x80, 0xE0, 0x0D, // good frame
+				0xFF, 0x33, 0x44, 0x03, 0x29, 0x99, 0x99, // bad frame (checksum)
+			},
+			wantMessages: [][]byte{
+				[]byte{0x11, 0x22},
+				[]byte{0x33, 0x44},
+				[]byte{0x11, 0x22},
+			},
+			wantErrorCount: 2,
 		},
 	}
 
@@ -223,33 +248,42 @@ func TestFrameReceiver_Success(t *testing.T) {
 			continue
 		}
 
-		ch := make(chan []byte)
-		go fr.Receive(context.Background(), ch)
+		msgC := make(chan []byte, 10)
+		errC := make(chan error, 10)
 
-		// iterate through expected frames and ensure we get a matching
-		// frame from the receive channel
-		for i := range tt.want {
-			ctx, _ := context.WithTimeout(context.Background(), time.Second)
-			select {
-			case got := <-ch:
-				if !reflect.DeepEqual(got, tt.want[i]) {
-					t.Errorf("case %d: frame %d: incorrect content: want=% x got=% x", ti, i, tt.want[i], got)
-				}
-			case <-ctx.Done():
-				t.Errorf("case %d: failed to read expected frame %d in time", ti, i)
+		go func() {
+			fr.Receive(context.Background(), msgC, errC)
+
+			// Receive MUST have exited before we go on to manually close channels.
+			// This implicitly confirms that Receive is acting properly when it
+			// encounteres io.EOF.
+			close(msgC)
+			close(errC)
+		}()
+
+		msgs := [][]byte{}
+		for msg := range msgC {
+			msgs = append(msgs, msg)
+		}
+		if len(msgs) != len(tt.wantMessages) {
+			t.Errorf("case %d: expected %d messages, got %d", ti, len(tt.wantMessages), len(msgs))
+			t.Logf("case %d: messages = %+v", ti, msgs)
+		}
+		for i := range tt.wantMessages {
+			got := msgs[i]
+			want := tt.wantMessages[i]
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("case %d: message %d: incorrect content: want=% x got=% x", ti, i, want, got)
 			}
 		}
 
-		// confirm no more frames are available
-		select {
-		case got := <-ch:
-			t.Errorf("case %d: received unexpected additional frame: % x", ti, got)
-		default:
+		errs := []error{}
+		for err := range errC {
+			errs = append(errs, err)
 		}
-
-		if err := fr.Err(); err != nil {
-			t.Errorf("case %d: frame receiver reported error: %v", ti, err)
+		if len(errs) != tt.wantErrorCount {
+			t.Errorf("case %d: expected %d errors, got %d", ti, tt.wantErrorCount, len(errs))
+			t.Logf("case %d: errors = %v", ti, errs)
 		}
-
 	}
 }
