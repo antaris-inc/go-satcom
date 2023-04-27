@@ -14,7 +14,7 @@ import (
 // Builds an example FrameConfig that may be used to exchange
 // CSP messages with a Satlab SRS4 tranceiver.
 func MakeSatlabSRS4FrameConfig() (satcom.FrameConfig, error) {
-	// Set up the base config with the proper MTU and ASM
+	// Set up the base config with proper ASM and frame size
 	cfg := satcom.FrameConfig{
 		FrameSyncMarker: satlab.SATLAB_ASM,
 		FrameSize:       223,
@@ -80,10 +80,10 @@ func NewSatlabSRS4IdleFrame_Rand() ([]byte, error) {
 	cfg, _ := MakeSatlabSRS4FrameConfig()
 
 	frm := make([]byte, cfg.FrameSize)
-	n, err = rand.Read(frm)
+	n, err := rand.Read(frm)
 	if err != nil {
 		return nil, fmt.Errorf("rand read failed: %v", err)
-	} else if n != rem {
+	} else if n != cfg.FrameSize {
 		return nil, errors.New("read incorrect number of random bytes")
 	}
 

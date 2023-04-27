@@ -23,7 +23,7 @@ func NewFrameReader(src io.Reader, syncMarker []byte, maxFrameSize int) *frameRe
 	return &frameReader{
 		source:     src,
 		syncMarker: syncMarker,
-		readBuffer: make([]byte, 2*maxFrameSize),
+		readBuffer: make([]byte, 3*maxFrameSize),
 	}
 
 }

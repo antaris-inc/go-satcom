@@ -35,22 +35,22 @@ func TestFrameSender_Success(t *testing.T) {
 		msg  []byte
 		want []byte
 	}{
-		// Send max MTU w/o adapters
+		// Send max length w/o adapters
 		{
 			FrameConfig: FrameConfig{
-				FrameMTU:        4,
 				FrameSyncMarker: []byte{0xFF},
+				FrameSize:       3,
 				Adapters:        nil,
 			},
 			msg:  []byte{0x11, 0x22, 0x33},
 			want: []byte{0xFF, 0x11, 0x22, 0x33},
 		},
 
-		// Send max MTU w/ one adapter
+		// Send max length w/ one adapter
 		{
 			FrameConfig: FrameConfig{
-				FrameMTU:        7,
 				FrameSyncMarker: []byte{0xFF},
+				FrameSize:       6,
 				Adapters: []Adapter{
 					crc32Adapter,
 				},
@@ -59,11 +59,11 @@ func TestFrameSender_Success(t *testing.T) {
 			want: []byte{0xFF, 0x11, 0x22, 0x1C, 0x80, 0xE0, 0x0D},
 		},
 
-		// Send max MTU w/ two adapters
+		// Send max length w/ two adapters
 		{
 			FrameConfig: FrameConfig{
-				FrameMTU:        12,
 				FrameSyncMarker: []byte{0xFE, 0xFF},
+				FrameSize:       10,
 				Adapters: []Adapter{
 					&satlab.SatlabSpaceframeAdapter{
 						satlab.SpaceframeConfig{
@@ -111,21 +111,21 @@ func TestFrameSender_Failure(t *testing.T) {
 		FrameConfig
 		msg []byte
 	}{
-		// Send over MTU w/o adapters
+		// Send over length w/o adapters
 		{
 			FrameConfig: FrameConfig{
-				FrameMTU:        3,
 				FrameSyncMarker: []byte{0xFF},
+				FrameSize:       2,
 				Adapters:        nil,
 			},
 			msg: []byte{0x11, 0x22, 0x33},
 		},
 
-		// Send over MTU w/ one adapter
+		// Send over length w/ one adapter
 		{
 			FrameConfig: FrameConfig{
-				FrameMTU:        6,
 				FrameSyncMarker: []byte{0xFF},
+				FrameSize:       5,
 				Adapters: []Adapter{
 					crc32Adapter,
 				},
@@ -160,8 +160,8 @@ func TestFrameReceiver_Success(t *testing.T) {
 		// Three frames without adapters
 		{
 			FrameConfig: FrameConfig{
-				FrameMTU:        4,
 				FrameSyncMarker: []byte{0xFF},
+				FrameSize:       3,
 				Adapters:        nil,
 			},
 			input: []byte{
@@ -179,8 +179,8 @@ func TestFrameReceiver_Success(t *testing.T) {
 		// Two frames without adapters embedded in garbage
 		{
 			FrameConfig: FrameConfig{
-				FrameMTU:        4,
 				FrameSyncMarker: []byte{0xFF},
+				FrameSize:       3,
 				Adapters:        nil,
 			},
 			input: []byte{
@@ -198,8 +198,8 @@ func TestFrameReceiver_Success(t *testing.T) {
 		// Two frames with adapter
 		{
 			FrameConfig: FrameConfig{
-				FrameMTU:        7,
 				FrameSyncMarker: []byte{0xFF},
+				FrameSize:       6,
 				Adapters: []Adapter{
 					crc32Adapter,
 				},

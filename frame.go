@@ -35,10 +35,12 @@ type FrameConfig struct {
 	// message frame.
 	FrameSyncMarker []byte
 
-	// Maximum size of fully encoded messages that may
-	// be transmitted or received, including sync marker
-	// and any modifications made by adapters.
-	FrameMTU int
+	// Size of fully encoded messages to be transmitted or
+	// received. It is assumed that either a consant message
+	// size will be used, or some sort of padding will be
+	// applied by an included Adapter. This value does NOT
+	// include the length of the sync marker.
+	FrameSize int
 
 	// Adapters apply basic encoding/decoding capabilities
 	// to as messages are converted to and from frames.
@@ -50,8 +52,8 @@ func (cfg *FrameConfig) Err() error {
 		return errors.New("FrameSyncMarker must be provided")
 	}
 
-	if cfg.FrameMTU <= len(cfg.FrameSyncMarker) {
-		return errors.New("FrameMTU must be greater than FrameSyncMarker length")
+	if cfg.FrameSize <= 0 {
+		return errors.New("FrameSize must be greater than 0")
 	}
 
 	return nil
@@ -75,30 +77,31 @@ type FrameSender struct {
 }
 
 func (s *FrameSender) Send(msg []byte) error {
-	amsg := msg
+	frm := msg
 	var err error
 	for _, ad := range s.cfg.Adapters {
-		amsg, err = ad.Wrap(amsg)
+		frm, err = ad.Wrap(frm)
 		if err != nil {
 			return err
 		}
 	}
 
-	frm := append(s.cfg.FrameSyncMarker, amsg...)
-
 	frmN := len(frm)
-	if frmN > s.cfg.FrameMTU {
-		return errors.New("encoded frame exceeds MTU")
+	if frmN > s.cfg.FrameSize {
+		return errors.New("encoded frame exceeds maximum size")
 	}
 
-	n, err := s.dst.Write(frm)
+	frmWithASM := append(s.cfg.FrameSyncMarker, frm...)
+	wantN := len(frmWithASM)
+
+	n, err := s.dst.Write(frmWithASM)
 	if err != nil {
 		return err
 	}
 
 	// NOTE(bcwaldon): not sure what we should do in this case, so an error
 	// seems most appropriate for now.
-	if n != frmN {
+	if n != wantN {
 		return errors.New("partial write")
 	}
 
@@ -139,15 +142,19 @@ type FrameReceiver struct {
 // If the provided Context is cancelled or the provided channel
 // is closed, the Receive method will exit.
 func (r *FrameReceiver) Receive(ctx context.Context, ch chan<- []byte) {
-	frameReader := NewFrameReader(r.src, r.cfg.FrameSyncMarker, r.cfg.FrameMTU)
+	frameReader := NewFrameReader(r.src, r.cfg.FrameSyncMarker, r.cfg.FrameSize)
+
+	wantN := len(r.cfg.FrameSyncMarker) + r.cfg.FrameSize
 
 	for {
+		// seek to next sync marker
 		if err := frameReader.Seek(); err != nil && err != io.EOF {
 			r.err = fmt.Errorf("read failure: %v", err)
 			return
 		}
 
-		frm := make([]byte, r.cfg.FrameMTU)
+		// now ready sync marker and full frame
+		frm := make([]byte, wantN)
 		n, err := frameReader.Read(frm)
 		if err != nil {
 			if err == io.EOF {
@@ -173,11 +180,14 @@ func (r *FrameReceiver) Receive(ctx context.Context, ch chan<- []byte) {
 			//TODO(bcwaldon): determine if this behavior is acceptable
 			r.err = errors.New("read failure: empty read operation")
 			return
+		} else if n != wantN {
+			//TODO(bcwaldon): determine if this behavior is acceptable
+			r.err = errors.New("read failure: partial read")
+			return
 		}
 
-		// must strip leading sync marker and truncate buffer to actual
-		// number of bytes read
-		msg := frm[len(r.cfg.FrameSyncMarker):n]
+		// must strip leading sync marker
+		msg := frm[len(r.cfg.FrameSyncMarker):]
 
 		// Apply all adapters in reverse order
 		for i := len(r.cfg.Adapters) - 1; i >= 0; i-- {
