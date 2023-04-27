@@ -19,11 +19,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"github.com/antaris-inc/go-satcom/adapter"
 )
 
-type MessageConfig struct {
+// Objects that implement this interface are used as middleware
+// while sending and receiving messages. Typically this is used
+// in support of symmetric capabilities such as CRC checksums
+// or Reed Solomon parity bytes.
+type Adapter interface {
+	Wrap([]byte) ([]byte, error)
+	Unwrap([]byte) ([]byte, error)
+}
+
+type FrameConfig struct {
 	// Byte sequence that designates the start of a
 	// message frame.
 	FrameSyncMarker []byte
@@ -33,13 +40,12 @@ type MessageConfig struct {
 	// and any modifications made by adapters.
 	FrameMTU int
 
-	// Message adapters used to encode messages into
-	// frames for transmission. Also used to adapt
-	// frames back to messages on receipt.
-	Adapters []adapter.Adapter
+	// Adapters apply basic encoding/decoding capabilities
+	// to as messages are converted to and from frames.
+	Adapters []Adapter
 }
 
-func (cfg *MessageConfig) Err() error {
+func (cfg *FrameConfig) Err() error {
 	if len(cfg.FrameSyncMarker) == 0 {
 		return errors.New("FrameSyncMarker must be provided")
 	}
@@ -51,78 +57,78 @@ func (cfg *MessageConfig) Err() error {
 	return nil
 }
 
-func NewMessageSender(cfg MessageConfig, dst io.Writer) (*MessageSender, error) {
+func NewFrameSender(cfg FrameConfig, dst io.Writer) (*FrameSender, error) {
 	if err := cfg.Err(); err != nil {
 		return nil, err
 	}
 
-	ms := MessageSender{
+	fs := FrameSender{
 		cfg: cfg,
 		dst: dst,
 	}
-	return &ms, nil
+	return &fs, nil
 }
 
-type MessageSender struct {
-	cfg MessageConfig
+type FrameSender struct {
+	cfg FrameConfig
 	dst io.Writer
 }
 
-func (s *MessageSender) Send(msg []byte) error {
-	enc := msg
+func (s *FrameSender) Send(msg []byte) error {
+	amsg := msg
 	var err error
 	for _, ad := range s.cfg.Adapters {
-		enc, err = ad.Wrap(enc)
+		amsg, err = ad.Wrap(amsg)
 		if err != nil {
 			return err
 		}
 	}
 
-	enc = append(s.cfg.FrameSyncMarker, enc...)
+	frm := append(s.cfg.FrameSyncMarker, amsg...)
 
-	encLen := len(enc)
-	if encLen > s.cfg.FrameMTU {
-		return errors.New("encoded message exceeds MTU")
+	frmN := len(frm)
+	if frmN > s.cfg.FrameMTU {
+		return errors.New("encoded frame exceeds MTU")
 	}
 
-	n, err := s.dst.Write(enc)
+	n, err := s.dst.Write(frm)
 	if err != nil {
 		return err
 	}
 
 	// NOTE(bcwaldon): not sure what we should do in this case, so an error
 	// seems most appropriate for now.
-	if n != encLen {
+	if n != frmN {
 		return errors.New("partial write")
 	}
 
 	return nil
 }
 
-func NewMessageReceiver(cfg MessageConfig, src io.Reader) (*MessageReceiver, error) {
+func NewFrameReceiver(cfg FrameConfig, src io.Reader) (*FrameReceiver, error) {
 	if err := cfg.Err(); err != nil {
 		return nil, err
 	}
 
-	mr := MessageReceiver{
+	fr := FrameReceiver{
 		cfg: cfg,
 		src: src,
 	}
-	return &mr, nil
+	return &fr, nil
 }
 
-type MessageReceiver struct {
-	cfg MessageConfig
+type FrameReceiver struct {
+	cfg FrameConfig
 	src io.Reader
 
 	// Used to asynchronously communicate errors
 	err error
 }
 
-// Sends received messages to provided channel. This function is
-// designed to be called within a goroutine.
+// Forwards received frames to provided channel.
+// This function is designed to be called within a goroutine.
 //
-// Receiving does not begin automatically when the MessageReceiver
+// Receiving does not begin automatically when the FrameReceiver
 // is created. A caller must use Receive to actually start reading
 // from the source.
 //
@@ -132,17 +138,17 @@ type MessageReceiver struct {
 //
 // If the provided Context is cancelled or the provided channel
 // is closed, the Receive method will exit.
-func (r *MessageReceiver) Receive(ctx context.Context, ch chan<- []byte) {
+func (r *FrameReceiver) Receive(ctx context.Context, ch chan<- []byte) {
 	frameReader := NewFrameReader(r.src, r.cfg.FrameSyncMarker, r.cfg.FrameMTU)
 
 	for {
-		if err := frameReader.Seek(); err != nil {
+		if err := frameReader.Seek(); err != nil && err != io.EOF {
 			r.err = fmt.Errorf("read failure: %v", err)
 			return
 		}
 
-		msg := make([]byte, r.cfg.FrameMTU)
-		n, err := frameReader.Read(msg)
+		frm := make([]byte, r.cfg.FrameMTU)
+		n, err := frameReader.Read(frm)
 		if err != nil {
 			if err == io.EOF {
 				return
@@ -171,7 +177,9 @@ func (r *MessageReceiver) Receive(ctx context.Context, ch chan<- []byte) {
 
 		// must strip leading sync marker and truncate buffer to actual
 		// number of bytes read
-		msg = msg[len(r.cfg.FrameSyncMarker):n]
+		msg := frm[len(r.cfg.FrameSyncMarker):n]
+
+		// Apply all adapters in reverse order
 		for i := len(r.cfg.Adapters) - 1; i >= 0; i-- {
 			msg, err = r.cfg.Adapters[i].Unwrap(msg)
 			if err != nil {
@@ -188,6 +196,6 @@ func (r *MessageReceiver) Receive(ctx context.Context, ch chan<- []byte) {
 	return
 }
 
-func (r *MessageReceiver) Err() error {
+func (r *FrameReceiver) Err() error {
 	return r.err
 }

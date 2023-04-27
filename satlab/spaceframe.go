@@ -15,14 +15,15 @@
 package satlab
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 )
 
 const (
-	SPACEFRAME_ASM_LENGTH_BYTES = 4
+	SPACEFRAME_PAYLOAD_LENGTH_LIMIT = 1024
+
+	SATLAB_ASM_LENGTH_BYTES = 4
 
 	SPACEFRAME_HEADER_LENGTH_BYTES = 2
 
@@ -33,7 +34,7 @@ const (
 )
 
 var (
-	SPACEFRAME_ASM = []byte{0x1A, 0xCF, 0xFC, 0x1D}
+	SATLAB_ASM = []byte{0x1A, 0xCF, 0xFC, 0x1D}
 
 	SPACEFRAME_TYPE_CSP = SpaceframeType(0)
 
@@ -44,27 +45,10 @@ var (
 type SpaceframeConfig struct {
 	Type            SpaceframeType
 	PayloadDataSize int
-
-	// If true, handle ASM prepend/strip. Typically
-	// this is handled out of band, so the default
-	// behavior is disabled.
-	ASMEnabled bool
-
-	// If true, append a CRC32c checksum to frames.
-	// Checksum verification is also required
-	// during deframe.
-	CRCEnabled bool
 }
 
 func (cfg *SpaceframeConfig) FrameSize() int {
-	n := SPACEFRAME_HEADER_LENGTH_BYTES + cfg.PayloadDataSize
-	if cfg.ASMEnabled {
-		n += SPACEFRAME_ASM_LENGTH_BYTES
-	}
-	if cfg.CRCEnabled {
-		n += CRC_CHECKSUM_LENGTH_BYTES
-	}
-	return n
+	return SPACEFRAME_HEADER_LENGTH_BYTES + cfg.PayloadDataSize
 }
 
 type SpaceframeType int
@@ -79,9 +63,8 @@ func (h *SpaceframeHeader) Err() error {
 		return errors.New("type invalid")
 	}
 
-	// datasheet is explicit about this limit
-	if h.Length < 0 || h.Length > 1024 {
-		return errors.New("length out of range (0-1024)")
+	if h.Length < 0 || h.Length > SPACEFRAME_PAYLOAD_LENGTH_LIMIT {
+		return errors.New("length out of range")
 	}
 
 	return nil
@@ -153,15 +136,6 @@ func Enframe(msg []byte, cfg *SpaceframeConfig) ([]byte, error) {
 	copy(pmsg, msg)
 	frm = append(frm, pmsg...)
 
-	if cfg.CRCEnabled {
-		frm = applyCRC(frm)
-	}
-
-	if cfg.ASMEnabled {
-		// prepend ASM
-		frm = append(SPACEFRAME_ASM, frm...)
-	}
-
 	return frm, nil
 }
 
@@ -170,31 +144,14 @@ func Deframe(frm []byte, cfg *SpaceframeConfig) ([]byte, error) {
 		return nil, errors.New("Spaceframe length unexpected")
 	}
 
-	if cfg.ASMEnabled {
-		if bytes.Compare(frm[:SPACEFRAME_ASM_LENGTH_BYTES], SPACEFRAME_ASM) != 0 {
-			return nil, errors.New("Spaceframe ASM missing or invalid")
-		}
-
-		// strip ASM
-		frm = frm[SPACEFRAME_ASM_LENGTH_BYTES:]
-	}
-
-	var err error
-	if cfg.CRCEnabled {
-		frm, err = verifyAndRemoveCRC(frm)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	hb := frm[:SPACEFRAME_HEADER_LENGTH_BYTES]
 
 	var hdr SpaceframeHeader
-	if err = hdr.FromBytes(hb); err != nil {
+	if err := hdr.FromBytes(hb); err != nil {
 		return nil, err
 	}
 
-	if err = hdr.Err(); err != nil {
+	if err := hdr.Err(); err != nil {
 		return nil, fmt.Errorf("Spaceframe header: %v", err)
 	}
 

@@ -9,9 +9,7 @@ import (
 	"time"
 
 	"github.com/antaris-inc/go-satcom"
-	"github.com/antaris-inc/go-satcom/adapter"
-	csp "github.com/antaris-inc/go-satcom/csp/v1"
-	"github.com/antaris-inc/go-satcom/satlab"
+	"github.com/antaris-inc/go-satcom/example"
 )
 
 func dialOrSkip(t *testing.T, env string) (net.Conn, error) {
@@ -25,7 +23,7 @@ func dialOrSkip(t *testing.T, env string) (net.Conn, error) {
 	return d.DialContext(ctx, "tcp", uplinkAddr)
 }
 
-func TestE2EMessage_Loopback(t *testing.T) {
+func testE2EFrameLoopback(t *testing.T, cfg satcom.FrameConfig) {
 	uplink, err := dialOrSkip(t, "TEST_E2E_UPLINK_ADDRESS")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -38,44 +36,24 @@ func TestE2EMessage_Loopback(t *testing.T) {
 	}
 	defer downlink.Close()
 
-	cfg := satcom.MessageConfig{
-		FrameMTU:        227,
-		FrameSyncMarker: satlab.SPACEFRAME_ASM,
-		Adapters: []adapter.Adapter{
-			adapter.NewCSPv1Adapter(csp.PacketHeader{
-				Priority:        1,
-				Source:          14,
-				SourcePort:      63,
-				Destination:     18,
-				DestinationPort: 7,
-			}, 213),
-			&adapter.SatlabSpaceframeAdapter{
-				satlab.SpaceframeConfig{
-					PayloadDataSize: 217,
-					CRCEnabled:      true,
-				},
-			},
-		},
-	}
-
-	ms, err := satcom.NewMessageSender(cfg, uplink)
+	fs, err := satcom.NewFrameSender(cfg, uplink)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	mr, err := satcom.NewMessageReceiver(cfg, downlink)
+	fr, err := satcom.NewFrameReceiver(cfg, downlink)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 	ch := make(chan []byte)
-	go mr.Receive(ctx, ch)
+	go fr.Receive(ctx, ch)
 
 	// write message
 
 	msg := []byte("HELLO WORLD")
-	if err := ms.Send(msg); err != nil {
+	if err := fs.Send(msg); err != nil {
 		t.Fatalf("send operation failed: %v", err)
 	}
 
@@ -95,4 +73,13 @@ func TestE2EMessage_Loopback(t *testing.T) {
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("read incorrect bytes: want=% x got=% x", want, got)
 	}
+}
+
+func TestE2EFrameLoopback_SatlabSRS4(t *testing.T) {
+	cfg, err := example.MakeSatlabSRS4FrameConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	testE2EFrameLoopback(t, cfg)
 }

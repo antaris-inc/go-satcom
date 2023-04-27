@@ -21,20 +21,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/antaris-inc/go-satcom/adapter"
-	csp "github.com/antaris-inc/go-satcom/csp/v1"
+	"github.com/antaris-inc/go-satcom/crc"
 	"github.com/antaris-inc/go-satcom/satlab"
 )
 
-func TestMessageSender_Success(t *testing.T) {
+func TestFrameSender_Success(t *testing.T) {
+	crc32Adapter, _ := crc.NewCRC32Adapter(crc.CRC32AdapterConfig{
+		Algorithm: crc.CRC32c,
+	})
+
 	tests := []struct {
-		MessageConfig
+		FrameConfig
 		msg  []byte
 		want []byte
 	}{
 		// Send max MTU w/o adapters
 		{
-			MessageConfig: MessageConfig{
+			FrameConfig: FrameConfig{
 				FrameMTU:        4,
 				FrameSyncMarker: []byte{0xFF},
 				Adapters:        nil,
@@ -45,56 +48,51 @@ func TestMessageSender_Success(t *testing.T) {
 
 		// Send max MTU w/ one adapter
 		{
-			MessageConfig: MessageConfig{
+			FrameConfig: FrameConfig{
 				FrameMTU:        7,
 				FrameSyncMarker: []byte{0xFF},
-				Adapters: []adapter.Adapter{
-					adapter.NewCSPv1Adapter(csp.PacketHeader{}, 2),
+				Adapters: []Adapter{
+					crc32Adapter,
 				},
 			},
 			msg:  []byte{0x11, 0x22},
-			want: []byte{0xFF, 0x00, 0x00, 0x00, 0x00, 0x11, 0x22},
+			want: []byte{0xFF, 0x11, 0x22, 0x1C, 0x80, 0xE0, 0x0D},
 		},
 
 		// Send max MTU w/ two adapters
 		{
-			MessageConfig: MessageConfig{
-				FrameMTU:        11, // msg + CSP header + spaceframe header + ASM
-				FrameSyncMarker: []byte{0xFF},
-				Adapters: []adapter.Adapter{
-					adapter.NewCSPv1Adapter(csp.PacketHeader{
-						Priority:        1,
-						Source:          14,
-						Destination:     15,
-						SourcePort:      16,
-						DestinationPort: 17,
-					}, 4),
-					&adapter.SatlabSpaceframeAdapter{
+			FrameConfig: FrameConfig{
+				FrameMTU:        12,
+				FrameSyncMarker: []byte{0xFE, 0xFF},
+				Adapters: []Adapter{
+					&satlab.SatlabSpaceframeAdapter{
 						satlab.SpaceframeConfig{
-							PayloadDataSize: 8, // msg + CSP header
+							Type:            satlab.SPACEFRAME_TYPE_CSP,
+							PayloadDataSize: 4,
 						},
 					},
+					crc32Adapter,
 				},
 			},
 			msg: []byte{0x11, 0x22},
 			want: []byte{
-				0xFF,       // ASM
-				0x00, 0x06, // Spaceframe header
-				0x5c, 0xf4, 0x50, 0x00, // CSP header
+				0xFE, 0xFF, // ASM
+				0x00, 0x02, // Spaceframe header
 				0x11, 0x22, // original message
 				0x00, 0x00, // Spaceframe padding
+				0xBD, 0x02, 0x11, 0x4E, // CRC checksum
 			},
 		},
 	}
 
 	for ti, tt := range tests {
 		buf := bytes.NewBuffer(nil)
-		ms, err := NewMessageSender(tt.MessageConfig, buf)
+		fs, err := NewFrameSender(tt.FrameConfig, buf)
 		if err != nil {
-			t.Errorf("case %d: failed constructing MessageSender: %v", ti, err)
+			t.Errorf("case %d: failed constructing FrameSender: %v", ti, err)
 			continue
 		}
-		if err := ms.Send(tt.msg); err != nil {
+		if err := fs.Send(tt.msg); err != nil {
 			t.Errorf("case %d: unexpected error: %v", ti, err)
 		}
 		got := buf.Bytes()
@@ -104,14 +102,18 @@ func TestMessageSender_Success(t *testing.T) {
 	}
 }
 
-func TestMessageSender_Failure(t *testing.T) {
+func TestFrameSender_Failure(t *testing.T) {
+	crc32Adapter, _ := crc.NewCRC32Adapter(crc.CRC32AdapterConfig{
+		Algorithm: crc.CRC32c,
+	})
+
 	tests := []struct {
-		MessageConfig
+		FrameConfig
 		msg []byte
 	}{
 		// Send over MTU w/o adapters
 		{
-			MessageConfig: MessageConfig{
+			FrameConfig: FrameConfig{
 				FrameMTU:        3,
 				FrameSyncMarker: []byte{0xFF},
 				Adapters:        nil,
@@ -121,11 +123,11 @@ func TestMessageSender_Failure(t *testing.T) {
 
 		// Send over MTU w/ one adapter
 		{
-			MessageConfig: MessageConfig{
+			FrameConfig: FrameConfig{
 				FrameMTU:        6,
 				FrameSyncMarker: []byte{0xFF},
-				Adapters: []adapter.Adapter{
-					adapter.NewCSPv1Adapter(csp.PacketHeader{}, 2),
+				Adapters: []Adapter{
+					crc32Adapter,
 				},
 			},
 			msg: []byte{0x11, 0x22, 0x33},
@@ -134,29 +136,33 @@ func TestMessageSender_Failure(t *testing.T) {
 
 	for ti, tt := range tests {
 		buf := bytes.NewBuffer(nil)
-		ms, err := NewMessageSender(tt.MessageConfig, buf)
+		fs, err := NewFrameSender(tt.FrameConfig, buf)
 		if err != nil {
 			t.Errorf("case %d: failed constructing Socket: %v", ti, err)
 			continue
 		}
-		if err := ms.Send(tt.msg); err == nil {
+		if err := fs.Send(tt.msg); err == nil {
 			t.Errorf("case %d: expected non-nil error", ti)
 		}
 	}
 }
 
-func TestMessageReceiver_Success(t *testing.T) {
+func TestFrameReceiver_Success(t *testing.T) {
+	crc32Adapter, _ := crc.NewCRC32Adapter(crc.CRC32AdapterConfig{
+		Algorithm: crc.CRC32c,
+	})
+
 	tests := []struct {
-		MessageConfig
+		FrameConfig
 		input []byte
 		want  [][]byte
 	}{
 		// Three frames without adapters
 		{
-			MessageConfig: MessageConfig{
+			FrameConfig: FrameConfig{
 				FrameMTU:        4,
 				FrameSyncMarker: []byte{0xFF},
-				Adapters:        []adapter.Adapter{},
+				Adapters:        nil,
 			},
 			input: []byte{
 				0xFF, 0x11, 0x22, 0x33,
@@ -172,10 +178,10 @@ func TestMessageReceiver_Success(t *testing.T) {
 
 		// Two frames without adapters embedded in garbage
 		{
-			MessageConfig: MessageConfig{
+			FrameConfig: FrameConfig{
 				FrameMTU:        4,
 				FrameSyncMarker: []byte{0xFF},
-				Adapters:        []adapter.Adapter{},
+				Adapters:        nil,
 			},
 			input: []byte{
 				0xAA, 0xBB, 0xCC,
@@ -191,34 +197,34 @@ func TestMessageReceiver_Success(t *testing.T) {
 
 		// Two frames with adapter
 		{
-			MessageConfig: MessageConfig{
-				FrameMTU:        8,
+			FrameConfig: FrameConfig{
+				FrameMTU:        7,
 				FrameSyncMarker: []byte{0xFF},
-				Adapters: []adapter.Adapter{
-					adapter.NewCSPv1Adapter(csp.PacketHeader{}, 3),
+				Adapters: []Adapter{
+					crc32Adapter,
 				},
 			},
 			input: []byte{
-				0xFF, 0x00, 0x00, 0x00, 0x00, 0x11, 0x22, 0x33,
-				0xFF, 0x00, 0x00, 0x00, 0x00, 0x44, 0x55, 0x66,
+				0xFF, 0x11, 0x22, 0x1C, 0x80, 0xE0, 0x0D,
+				0xFF, 0x33, 0x44, 0x03, 0x29, 0x47, 0x6b,
 			},
 			want: [][]byte{
-				[]byte{0x11, 0x22, 0x33},
-				[]byte{0x44, 0x55, 0x66},
+				[]byte{0x11, 0x22},
+				[]byte{0x33, 0x44},
 			},
 		},
 	}
 
 	for ti, tt := range tests {
 		buf := bytes.NewBuffer(tt.input)
-		mr, err := NewMessageReceiver(tt.MessageConfig, buf)
+		fr, err := NewFrameReceiver(tt.FrameConfig, buf)
 		if err != nil {
 			t.Errorf("case %d: unexpected error: %v", ti, err)
 			continue
 		}
 
 		ch := make(chan []byte)
-		go mr.Receive(context.Background(), ch)
+		go fr.Receive(context.Background(), ch)
 
 		// iterate through expected frames and ensure we get a matching
 		// frame from the receive channel
@@ -241,74 +247,9 @@ func TestMessageReceiver_Success(t *testing.T) {
 		default:
 		}
 
-	}
-}
+		if err := fr.Err(); err != nil {
+			t.Errorf("case %d: frame receiver reported error: %v", ti, err)
+		}
 
-// Confirm basic loopback functionality mimicking a Satlab transceiver
-func TestMessageLoopback_Satlab(t *testing.T) {
-	buf := bytes.NewBuffer(nil)
-
-	cfg := MessageConfig{
-		FrameMTU:        227,
-		FrameSyncMarker: satlab.SPACEFRAME_ASM,
-		Adapters: []adapter.Adapter{
-			adapter.NewCSPv1Adapter(csp.PacketHeader{
-				Priority:        1,
-				Source:          14,
-				Destination:     15,
-				SourcePort:      16,
-				DestinationPort: 17,
-			}, 213),
-			&adapter.SatlabSpaceframeAdapter{
-				satlab.SpaceframeConfig{
-					PayloadDataSize: 217,
-					CRCEnabled:      true,
-				},
-			},
-		},
-	}
-
-	ms, err := NewMessageSender(cfg, buf)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	mr, err := NewMessageReceiver(cfg, buf)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// start receiving
-
-	ch := make(chan []byte, 1)
-	go mr.Receive(context.Background(), ch)
-
-	// write message and assert sanity
-
-	msg := []byte("XXX")
-	if err := ms.Send(msg); err != nil {
-		t.Fatalf("send operation failed: %v", err)
-	}
-
-	wantWrittenLen := 227
-
-	gotWrittenBytes := buf.Bytes()
-	gotWrittenLen := len(gotWrittenBytes)
-	if gotWrittenLen != wantWrittenLen {
-		t.Fatalf("wrote incorrect number of bytes: want=%d got=%d", wantWrittenLen, gotWrittenLen)
-	}
-
-	// read back the same message and assert sanity
-
-	got := <-ch
-	gotReadLen := len(got)
-
-	wantReadLen := 3
-	if gotReadLen != wantReadLen {
-		t.Errorf("read incorrect number of bytes: want=%d got=%d", wantReadLen, gotReadLen)
-	}
-
-	if !reflect.DeepEqual(msg, got) {
-		t.Fatalf("read incorrect bytes: want=%x got=%x", msg, got)
 	}
 }

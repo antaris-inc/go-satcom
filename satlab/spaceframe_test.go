@@ -20,47 +20,14 @@ import (
 )
 
 func TestSpaceframeConfigFrameSize(t *testing.T) {
-	tests := []struct {
-		cfg  SpaceframeConfig
-		want int
-	}{
-
-		// basic config
-		{
-			cfg: SpaceframeConfig{
-				Type:            SPACEFRAME_TYPE_CSP,
-				PayloadDataSize: 1024,
-			},
-			want: 1026,
-		},
-
-		// with CRC enabled
-		{
-			cfg: SpaceframeConfig{
-				Type:            SPACEFRAME_TYPE_CSP,
-				PayloadDataSize: 1024,
-				CRCEnabled:      true,
-			},
-			want: 1030,
-		},
-
-		// with CRC and ASM enabled
-		{
-			cfg: SpaceframeConfig{
-				Type:            SPACEFRAME_TYPE_CSP,
-				PayloadDataSize: 1024,
-				CRCEnabled:      true,
-				ASMEnabled:      true,
-			},
-			want: 1034,
-		},
+	cfg := SpaceframeConfig{
+		Type:            SPACEFRAME_TYPE_CSP,
+		PayloadDataSize: 1024,
 	}
-
-	for i, tt := range tests {
-		got := tt.cfg.FrameSize()
-		if got != tt.want {
-			t.Errorf("case %d: unexpected result: want=%d got=%d", i, tt.want, got)
-		}
+	want := 1026
+	got := cfg.FrameSize()
+	if got != want {
+		t.Errorf("unexpected result: want=%d got=%d", want, got)
 	}
 }
 
@@ -138,13 +105,6 @@ func TestSpaceframeEnframe(t *testing.T) {
 			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 6},
 			want: []byte{0x0, 0x3, 0x58, 0x59, 0x5a, 0x0, 0x0, 0x0},
 		},
-
-		// with ASM enabled
-		{
-			msg:  []byte("XYZ"),
-			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 3, ASMEnabled: true},
-			want: []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a},
-		},
 	}
 
 	for i, tt := range tests {
@@ -205,13 +165,6 @@ func TestSpaceframeDeframe(t *testing.T) {
 		{
 			frm:  []byte{0x0, 0x3, 0x58, 0x59, 0x5a, 0x0, 0x0, 0x0},
 			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 6},
-			want: []byte{0x58, 0x59, 0x5a},
-		},
-
-		// with ASM enabled
-		{
-			frm:  []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a},
-			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 3, ASMEnabled: true},
 			want: []byte{0x58, 0x59, 0x5a},
 		},
 	}

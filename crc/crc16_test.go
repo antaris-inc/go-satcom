@@ -12,38 +12,58 @@
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
 
-package satlab
+package crc
 
 import (
 	"reflect"
 	"testing"
+
+	"github.com/sigurn/crc16"
 )
 
-func TestCRC(t *testing.T) {
-	gotBytes := applyCRC([]byte{0x1, 0x2})
+func TestCRC16Adapter_Wrap(t *testing.T) {
+	ad, err := NewCRC16Adapter(CRC16AdapterConfig{Algorithm: crc16.CRC16_MAXIM})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-	wantBytes := []byte{0x1, 0x2, 0x03, 0xf8, 0x9f, 0x52}
+	gotBytes, err := ad.Wrap([]byte{0x1, 0x2})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantBytes := []byte{0x1, 0x2, 0xae, 0x7f}
 
 	if !reflect.DeepEqual(wantBytes, gotBytes) {
 		t.Errorf("unexpected result: want=% x, got=% x", wantBytes, gotBytes)
 	}
 }
 
-func TestCRCVerify(t *testing.T) {
-	arg := []byte{0x1, 0x2, 0x03, 0xf8, 0x9f, 0x52}
-	gotBytes, err := verifyAndRemoveCRC(arg)
+func TestCRC16Adapter_VerifySuccess(t *testing.T) {
+	ad, err := NewCRC16Adapter(CRC16AdapterConfig{Algorithm: crc16.CRC16_MAXIM})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	wantBytes := []byte{0x1, 0x2}
+	arg := []byte{0x1, 0x2, 0x03, 0x5E, 0xEF}
+	gotBytes, err := ad.Unwrap(arg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantBytes := []byte{0x1, 0x2, 0x3}
 
 	if !reflect.DeepEqual(wantBytes, gotBytes) {
 		t.Errorf("unexpected result: want=%#v, got=%#v", wantBytes, gotBytes)
 	}
 }
 
-func TestCRCVerifyErrors(t *testing.T) {
+func TestCRC16Adapter_VerifyFailure(t *testing.T) {
+	ad, err := NewCRC16Adapter(CRC16AdapterConfig{Algorithm: crc16.CRC16_MAXIM})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
 	tests := [][]byte{
 		// Not enough data
 		[]byte{0x1, 0x2},
@@ -53,7 +73,7 @@ func TestCRCVerifyErrors(t *testing.T) {
 	}
 
 	for i, tt := range tests {
-		_, err := verifyAndRemoveCRC(tt)
+		_, err := ad.Unwrap(tt)
 		if err == nil {
 			t.Errorf("case %d: expected non-nil error", i)
 		}

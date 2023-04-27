@@ -114,3 +114,32 @@ func TestNewSpacePacketToBytes_TooMuchData(t *testing.T) {
 		t.Fatalf("expected non-nil error")
 	}
 }
+
+func TestNewSpacePacketToBytes_Success(t *testing.T) {
+	p := NewSpacePacket(
+		SpacePacketHeader{
+			Port:           1,
+			SequenceNumber: 4000,
+			Destination:    253,
+			CommandNumber:  56,
+		},
+		[]byte{0x11, 0x22, 0x33},
+		SpacePacketFooter{
+			HardwareID: 12,
+		},
+	)
+	if err := p.Err(); err != nil {
+		t.Fatalf("received non-nil error: %v", err)
+	}
+
+	want := []byte{
+		0x0d, 0x01, 0xa0, 0x0f, 0xfd, 0x38, // packet header
+		0x11, 0x22, 0x33, // original message
+		0x0c, 0x00, 0x3d, 0x7e, // packet footer
+	}
+
+	got := p.ToBytes()
+	if !reflect.DeepEqual(want, got) {
+		t.Fatalf("unexpected output: want=% x got=% x", want, got)
+	}
+}

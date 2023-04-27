@@ -12,9 +12,16 @@
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
 
-package adapter
+package satlab
 
-type Adapter interface {
-	Wrap([]byte) ([]byte, error)
-	Unwrap([]byte) ([]byte, error)
+type SatlabSpaceframeAdapter struct {
+	SpaceframeConfig
+}
+
+func (a *SatlabSpaceframeAdapter) Wrap(msg []byte) ([]byte, error) {
+	return Enframe(msg, &a.SpaceframeConfig)
+}
+
+func (a *SatlabSpaceframeAdapter) Unwrap(frm []byte) ([]byte, error) {
+	return Deframe(frm, &a.SpaceframeConfig)
 }

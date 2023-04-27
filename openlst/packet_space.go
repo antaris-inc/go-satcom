@@ -17,7 +17,9 @@ package openlst
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 
+	"github.com/antaris-inc/go-satcom/crc"
 	"github.com/sigurn/crc16"
 )
 
@@ -27,10 +29,9 @@ var (
 
 	SPACE_PACKET_HEADER_LENGTH = 6
 	SPACE_PACKET_FOOTER_LENGTH = 4
-
-	//TODO(bcwaldon): need to confirm CRC16 algorithm
-	crc16Table = crc16.MakeTable(crc16.CRC16_MAXIM)
 )
+
+var crc16Adapter *crc.CRC16Adapter
 
 type SpacePacketHeader struct {
 	// Field 1
@@ -162,8 +163,19 @@ func (p *SpacePacket) Err() error {
 		return errors.New("packet length unequal to header length")
 	}
 
-	if err := verifySpacePacketCRC16(p); err != nil {
+	if err := p.verifyCRC16(); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (p *SpacePacket) verifyCRC16() error {
+	got := p.SpacePacketFooter.CRC16
+	want := makeSpacePacketCRC16(p)
+
+	if got[0] != want[0] || got[1] != want[1] {
+		return errors.New("checksum mismatch")
 	}
 
 	return nil
@@ -228,21 +240,16 @@ func makeSpacePacketCRC16(p *SpacePacket) []byte {
 	//TODO(bcwaldon); confirm candidate bytes
 	inp := bs[1 : len(bs)-2]
 
-	val := make([]byte, 2)
-	// Not reversing byte order here for usability, even though
-	// the order is reversed when encoded to wire format.
-	binary.BigEndian.PutUint16(val, crc16.Checksum(inp, crc16Table))
-
-	return val
+	return crc16Adapter.MakeChecksum(inp)
 }
 
-func verifySpacePacketCRC16(p *SpacePacket) error {
-	got := p.SpacePacketFooter.CRC16
-	want := makeSpacePacketCRC16(p)
-
-	if got[0] != want[0] || got[1] != want[1] {
-		return errors.New("checksum mismatch")
+func init() {
+	var err error
+	crc16Adapter, err = crc.NewCRC16Adapter(crc.CRC16AdapterConfig{
+		//TODO(bcwaldon): confirm this algorithm is correct for OpenLST
+		Algorithm: crc16.CRC16_MAXIM,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed initializing crc.CRC16Adapter: %v", err))
 	}
-
-	return nil
 }
