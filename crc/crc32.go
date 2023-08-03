@@ -48,6 +48,11 @@ type CRC32Adapter struct {
 	*crc32.Table
 }
 
+func (a *CRC32Adapter) MessageSize(n int) (int, error) {
+	size := n + CRC32_CHECKSUM_LENGTH_BYTES
+	return size, nil
+}
+
 func (a *CRC32Adapter) Wrap(v []byte) ([]byte, error) {
 	cv := crc32.Checksum(v, a.Table)
 	cb := make([]byte, CRC32_CHECKSUM_LENGTH_BYTES)

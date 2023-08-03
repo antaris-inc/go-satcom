@@ -45,6 +45,11 @@ type CRC16Adapter struct {
 	*crc16.Table
 }
 
+func (a *CRC16Adapter) MessageSize(n int) (int, error) {
+	size := n + CRC16_CHECKSUM_LENGTH_BYTES
+	return size, nil
+}
+
 func (a *CRC16Adapter) Wrap(v []byte) ([]byte, error) {
 	return append(v, a.MakeChecksum(v)...), nil
 }

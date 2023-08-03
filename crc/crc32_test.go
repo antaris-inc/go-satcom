@@ -19,6 +19,22 @@ import (
 	"testing"
 )
 
+func TestCRC32Adapter_MessageSize(t *testing.T) {
+	ad, err := NewCRC32Adapter(CRC32AdapterConfig{Algorithm: CRC32c})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantSize := 104
+	gotSize, err := ad.MessageSize(100)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotSize != wantSize {
+		t.Errorf("incorrect size: want=%d got=%d", gotSize, wantSize)
+	}
+}
+
 func TestCRC32Adapter_Wrap(t *testing.T) {
 	ad, err := NewCRC32Adapter(CRC32AdapterConfig{Algorithm: CRC32c})
 	if err != nil {

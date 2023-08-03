@@ -21,6 +21,22 @@ import (
 	"github.com/sigurn/crc16"
 )
 
+func TestCRC16Adapter_MessageSize(t *testing.T) {
+	ad, err := NewCRC16Adapter(CRC16AdapterConfig{Algorithm: crc16.CRC16_MAXIM})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantSize := 34
+	gotSize, err := ad.MessageSize(32)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotSize != wantSize {
+		t.Errorf("incorrect size: want=%d got=%d", gotSize, wantSize)
+	}
+}
+
 func TestCRC16Adapter_Wrap(t *testing.T) {
 	ad, err := NewCRC16Adapter(CRC16AdapterConfig{Algorithm: crc16.CRC16_MAXIM})
 	if err != nil {
