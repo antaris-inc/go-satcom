@@ -64,7 +64,7 @@ func TestFrameSender_Success(t *testing.T) {
 				FrameSyncMarker: []byte{0xFE, 0xFF},
 				FrameSize:       10,
 				Adapters: []Adapter{
-					&satlab.SatlabSpaceframeAdapter{
+					&satlab.SpaceframeAdapter{
 						satlab.SpaceframeConfig{
 							Type:            satlab.SPACEFRAME_TYPE_CSP,
 							PayloadDataSize: 4,

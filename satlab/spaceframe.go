@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"reflect"
 )
 
 const (
@@ -45,10 +46,15 @@ var (
 type SpaceframeConfig struct {
 	Type            SpaceframeType
 	PayloadDataSize int
+	WithASM         bool
 }
 
 func (cfg *SpaceframeConfig) FrameSize() int {
-	return SPACEFRAME_HEADER_LENGTH_BYTES + cfg.PayloadDataSize
+	n := SPACEFRAME_HEADER_LENGTH_BYTES + cfg.PayloadDataSize
+	if cfg.WithASM {
+		n += SATLAB_ASM_LENGTH_BYTES
+	}
+	return n
 }
 
 type SpaceframeType int
@@ -136,12 +142,24 @@ func Enframe(msg []byte, cfg *SpaceframeConfig) ([]byte, error) {
 	copy(pmsg, msg)
 	frm = append(frm, pmsg...)
 
+	if cfg.WithASM {
+		frm = append(SATLAB_ASM, frm...)
+	}
+
 	return frm, nil
 }
 
 func Deframe(frm []byte, cfg *SpaceframeConfig) ([]byte, error) {
 	if len(frm) != cfg.FrameSize() {
 		return nil, errors.New("Spaceframe length unexpected")
+	}
+
+	if cfg.WithASM {
+		gotASM := frm[0:SATLAB_ASM_LENGTH_BYTES]
+		if !reflect.DeepEqual(gotASM, SATLAB_ASM) {
+			return nil, errors.New("Spaceframe ASM mismatch")
+		}
+		frm = frm[SATLAB_ASM_LENGTH_BYTES:]
 	}
 
 	hb := frm[:SPACEFRAME_HEADER_LENGTH_BYTES]

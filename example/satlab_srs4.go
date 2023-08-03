@@ -24,7 +24,7 @@ func MakeSatlabSRS4FrameConfig() (satcom.FrameConfig, error) {
 	// a header and pads out to an expected length.
 	cfg.Adapters = append(
 		cfg.Adapters,
-		&satlab.SatlabSpaceframeAdapter{
+		&satlab.SpaceframeAdapter{
 			satlab.SpaceframeConfig{
 				Type:            satlab.SPACEFRAME_TYPE_CSP,
 				PayloadDataSize: 217,

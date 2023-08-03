@@ -14,14 +14,24 @@
 
 package satlab
 
-type SatlabSpaceframeAdapter struct {
+import "errors"
+
+type SpaceframeAdapter struct {
 	SpaceframeConfig
 }
 
-func (a *SatlabSpaceframeAdapter) Wrap(msg []byte) ([]byte, error) {
+func (a *SpaceframeAdapter) MessageSize(n int) (int, error) {
+	if n > a.SpaceframeConfig.PayloadDataSize {
+		return 0, errors.New("payload length limit exceeded")
+	}
+
+	return a.SpaceframeConfig.FrameSize(), nil
+}
+
+func (a *SpaceframeAdapter) Wrap(msg []byte) ([]byte, error) {
 	return Enframe(msg, &a.SpaceframeConfig)
 }
 
-func (a *SatlabSpaceframeAdapter) Unwrap(frm []byte) ([]byte, error) {
+func (a *SpaceframeAdapter) Unwrap(frm []byte) ([]byte, error) {
 	return Deframe(frm, &a.SpaceframeConfig)
 }

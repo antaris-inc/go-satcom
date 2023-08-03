@@ -99,6 +99,13 @@ func TestSpaceframeEnframe(t *testing.T) {
 			want: []byte{0x0, 0x3, 0x58, 0x59, 0x5a},
 		},
 
+		// with ASM enabled
+		{
+			msg:  []byte("XYZ"),
+			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 3, WithASM: true},
+			want: []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a},
+		},
+
 		// padding added as needed
 		{
 			msg:  []byte("XYZ"),
@@ -161,6 +168,13 @@ func TestSpaceframeDeframe(t *testing.T) {
 			want: []byte{0x58, 0x59, 0x5a},
 		},
 
+		// with ASM enabled
+		{
+			frm:  []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a},
+			cfg:  SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 3, WithASM: true},
+			want: []byte{0x58, 0x59, 0x5a},
+		},
+
 		// padding removed as needed
 		{
 			frm:  []byte{0x0, 0x3, 0x58, 0x59, 0x5a, 0x0, 0x0, 0x0},
@@ -188,6 +202,18 @@ func TestSpaceframeDeframeErrors(t *testing.T) {
 		frm []byte
 		cfg SpaceframeConfig
 	}{
+		// ASM not expected
+		{
+			frm: []byte{0x1a, 0xcf, 0xfc, 0x1d, 0x0, 0x3, 0x58, 0x59, 0x5a},
+			cfg: SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 3, WithASM: false},
+		},
+
+		// ASM expected but not present
+		{
+			frm: []byte{0x0, 0x3, 0x58, 0x59, 0x5a},
+			cfg: SpaceframeConfig{Type: SPACEFRAME_TYPE_CSP, PayloadDataSize: 3, WithASM: true},
+		},
+
 		// frame too small
 		{
 			frm: []byte{0x0, 0x3, 0x58, 0x59, 0x5a, 0x0, 0x0, 0x0, 0x0},
