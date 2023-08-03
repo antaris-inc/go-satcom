@@ -26,8 +26,12 @@ import (
 // in support of symmetric capabilities such as CRC checksums
 // or Reed Solomon parity bytes.
 type Adapter interface {
+	// Given a payload, wrap it in the appropriate envelope
 	Wrap([]byte) ([]byte, error)
+	// Given a complete message, strip and verify expected envelope
 	Unwrap([]byte) ([]byte, error)
+	// Given a sample payload size, calculate the expected length of the wrapped message
+	MessageSize(int) (int, error)
 }
 
 type FrameConfig struct {
