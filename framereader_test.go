@@ -27,7 +27,7 @@ func TestFrameReaderSingleFrame(t *testing.T) {
 	buf.Write(syncMarker)
 	buf.Write([]byte{0x04, 0x05, 0x06})
 
-	rd := NewFrameReader(buf, syncMarker, 6)
+	rd := NewFrameReader(buf, syncMarker, 128)
 
 	if err := rd.Seek(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -59,7 +59,7 @@ func TestFrameReaderDynamicLengthFrame(t *testing.T) {
 	buf.Write([]byte{0x07, 0x08, 0x09})
 	buf.Write([]byte{0x10, 0x11, 0x12})
 
-	rd := NewFrameReader(buf, syncMarker, 10)
+	rd := NewFrameReader(buf, syncMarker, 128)
 
 	if err := rd.Seek(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -103,7 +103,7 @@ func TestFrameReaderLargeSeek(t *testing.T) {
 	buf.Write(syncMarker)
 	buf.Write([]byte{0x04, 0x05, 0x06})
 
-	rd := NewFrameReader(buf, syncMarker, 6)
+	rd := NewFrameReader(buf, syncMarker, 128)
 
 	if err := rd.Seek(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -133,7 +133,7 @@ func TestFrameReaderPartialSyncMarker(t *testing.T) {
 	buf.Write([]byte{0x08, 0x09, 0x10, 0x01}) // first read through will stop here, seeing first byte of sync marker
 	buf.Write([]byte{0x02, 0x11, 0x12, 0x13}) // expect sync to progress until it sees the full sync marker
 
-	rd := NewFrameReader(buf, syncMarker, 4)
+	rd := NewFrameReader(buf, syncMarker, 128)
 
 	if err := rd.Seek(); err != nil {
 		t.Fatalf("unexpected error: %v", err)

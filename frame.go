@@ -147,7 +147,7 @@ type FrameReceiver struct {
 // This channel is used synchronously, so a caller MUST read
 // from it to unblock frame reception following an error.
 func (r *FrameReceiver) Receive(ctx context.Context, msgC chan<- []byte, errC chan<- error) {
-	frameReader := NewFrameReader(r.src, r.cfg.FrameSyncMarker, r.cfg.FrameSize)
+	frameReader := NewFrameReader(r.src, r.cfg.FrameSyncMarker, 2*r.cfg.FrameSize)
 	wantN := len(r.cfg.FrameSyncMarker) + r.cfg.FrameSize
 
 	readFrame := func() ([]byte, error) { // Seek to next sync marker

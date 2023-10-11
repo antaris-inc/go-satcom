@@ -19,11 +19,11 @@ import (
 	"io"
 )
 
-func NewFrameReader(src io.Reader, syncMarker []byte, maxFrameSize int) *frameReader {
+func NewFrameReader(src io.Reader, syncMarker []byte, frameBufferSize int) *frameReader {
 	return &frameReader{
 		source:     src,
 		syncMarker: syncMarker,
-		readBuffer: make([]byte, 3*maxFrameSize),
+		readBuffer: make([]byte, frameBufferSize),
 	}
 
 }
