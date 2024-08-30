@@ -53,9 +53,11 @@ func (p *SpacePacketHeader) Err() error {
 	if p.Length < 10 || p.Length > 251 {
 		return errors.New("Length must be 10-251")
 	}
-	if p.Port != 0 && p.Port != 1 {
-		return errors.New("Port must be 0 or 1")
-	}
+	//TODO(bcwaldon): confirm is this is actually true, as we see
+	// a "flags" value of 192 used in gr-openlst
+	//if p.Port != 0 && p.Port != 1 {
+	//	return errors.New("Port must be 0 or 1")
+	//}
 	if p.SequenceNumber < 0 || p.SequenceNumber > 65535 {
 		return errors.New("SequenceNumber must be 0-65535")
 	}
