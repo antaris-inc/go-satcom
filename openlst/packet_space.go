@@ -17,10 +17,8 @@ package openlst
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 
 	"github.com/antaris-inc/go-satcom/crc"
-	"github.com/sigurn/crc16"
 )
 
 var (
@@ -203,7 +201,7 @@ func (p *SpacePacket) FromBytes(bs []byte) error {
 	}
 
 	var pf SpacePacketFooter
-	if err := pf.FromBytes(bs[len(bs)-SPACE_PACKET_FOOTER_LENGTH-1:]); err != nil {
+	if err := pf.FromBytes(bs[len(bs)-SPACE_PACKET_FOOTER_LENGTH:]); err != nil {
 		return err
 	}
 
@@ -234,22 +232,29 @@ func NewSpacePacket(hdr SpacePacketHeader, dat []byte, ftr SpacePacketFooter) *S
 	return &p
 }
 
+// Calculates the CRC in the manner of the CC1110, which is documented here:
+// 	 https://www.ti.com/lit/an/swra111e/swra111e.pdf?ts=1724970872901
 func makeSpacePacketCRC16(p *SpacePacket) []byte {
 	bs := p.ToBytes()
 
-	//TODO(bcwaldon); confirm candidate bytes
-	inp := bs[1 : len(bs)-2]
+	// all fields considered (not leading preamble & ASM)
+	inp := bs[0 : len(bs)-2]
 
-	return crc16Adapter.MakeChecksum(inp)
-}
-
-func init() {
-	var err error
-	crc16Adapter, err = crc.NewCRC16Adapter(crc.CRC16AdapterConfig{
-		//TODO(bcwaldon): confirm this algorithm is correct for OpenLST
-		Algorithm: crc16.CRC16_MAXIM,
-	})
-	if err != nil {
-		panic(fmt.Sprintf("failed initializing crc.CRC16Adapter: %v", err))
+	var ck uint16 = 0xFFFF
+	for _, b := range inp {
+		for i := 0; i < 8; i++ {
+			if (((ck & 0x8000) >> 8) ^ uint16(b&0x80)) > 0 {
+				ck = (ck << 1) ^ 0x8005
+			} else {
+				ck = ck << 1
+			}
+			b = b << 1
+		}
 	}
+
+	ck = ck & 0xFFFF
+
+	ckB := make([]byte, 2)
+	binary.BigEndian.PutUint16(ckB, ck)
+	return ckB
 }
