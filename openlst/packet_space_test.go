@@ -135,11 +135,29 @@ func TestNewSpacePacketToBytes_Success(t *testing.T) {
 	want := []byte{
 		0x0d, 0x01, 0xa0, 0x0f, 0xfd, 0x38, // packet header
 		0x11, 0x22, 0x33, // original message
-		0x0c, 0x00, 0x3d, 0x7e, // packet footer
+		0x0c, 0x00, 0xb9, 0xd0, // packet footer
 	}
 
 	got := p.ToBytes()
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("unexpected output: want=% x got=% x", want, got)
+	}
+}
+
+func TestSpacePacketFromBytes(t *testing.T) {
+	val := []byte{0x0d, 0xc0, 0x04, 0x00, 0xfd, 0x38, 0x01, 0x02, 0x03, 0xff, 0x03, 0xbf, 0x04}
+
+	p := SpacePacket{}
+	if err := p.FromBytes(val); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := p.Err(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantData := []byte{0x01, 0x02, 0x03}
+	if !reflect.DeepEqual(wantData, p.Data) {
+		t.Fatalf("unexpected payload: want=% x got=% x", wantData, p.Data)
 	}
 }
