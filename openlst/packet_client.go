@@ -21,8 +21,6 @@ import (
 )
 
 var (
-	CLIENT_PACKET_ASM = []byte{0x22, 0x69}
-
 	CLIENT_PACKET_HEADER_LENGTH = 7
 )
 
