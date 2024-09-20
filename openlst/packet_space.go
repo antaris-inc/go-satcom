@@ -17,6 +17,7 @@ package openlst
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/antaris-inc/go-satcom/crc"
 )
@@ -49,9 +50,9 @@ type SpacePacketHeader struct {
 }
 
 func (p *SpacePacketHeader) Err() error {
-	//TODO(bcwaldon): confirm length bounds
-	if p.Length < 10 || p.Length > 251 {
-		return errors.New("Length must be 10-251")
+	minLen := SPACE_PACKET_HEADER_LENGTH + SPACE_PACKET_FOOTER_LENGTH - 1
+	if p.Length < minLen || p.Length > 251 {
+		return fmt.Errorf("Length must be %d-251", minLen)
 	}
 	//TODO(bcwaldon): confirm is this is actually true, as we see
 	// a "flags" value of 192 used in gr-openlst
@@ -159,8 +160,8 @@ func (p *SpacePacket) Err() error {
 		return err
 	}
 
-	if p.SpacePacketHeader.Length != SPACE_PACKET_HEADER_LENGTH+len(p.Data)+SPACE_PACKET_FOOTER_LENGTH {
-		return errors.New("packet length unequal to header length")
+	if p.SpacePacketHeader.Length != SPACE_PACKET_HEADER_LENGTH+len(p.Data)+SPACE_PACKET_FOOTER_LENGTH-1 {
+		return errors.New("packet length mismatch")
 	}
 
 	if err := p.verifyCRC16(); err != nil {
@@ -183,7 +184,7 @@ func (p *SpacePacket) verifyCRC16() error {
 
 // Encodes packet to byte slice, including header, data and footer.
 func (p *SpacePacket) ToBytes() []byte {
-	buf := make([]byte, p.SpacePacketHeader.Length)
+	buf := make([]byte, p.SpacePacketHeader.Length+1)
 	copy(buf, p.SpacePacketHeader.ToBytes())
 	copy(buf[SPACE_PACKET_HEADER_LENGTH:], p.Data)
 	copy(buf[SPACE_PACKET_HEADER_LENGTH+len(p.Data):], p.SpacePacketFooter.ToBytes())
@@ -217,7 +218,7 @@ func (p *SpacePacket) FromBytes(bs []byte) error {
 // Constructs a new SpacePacket using provided header and data inputs.
 //
 // The header length and footer CRC16 fields are both set automatically
-// based on the data provided.
+// based on the data provided. Length does not include itself.
 //
 // The packet returned must be confirmed as valid by the client before
 // further use.
@@ -228,7 +229,7 @@ func NewSpacePacket(hdr SpacePacketHeader, dat []byte, ftr SpacePacketFooter) *S
 		SpacePacketFooter: ftr,
 	}
 
-	p.SpacePacketHeader.Length = SPACE_PACKET_HEADER_LENGTH + len(dat) + SPACE_PACKET_FOOTER_LENGTH
+	p.SpacePacketHeader.Length = SPACE_PACKET_HEADER_LENGTH + len(dat) + SPACE_PACKET_FOOTER_LENGTH - 1
 	p.SpacePacketFooter.CRC16 = makeSpacePacketCRC16(&p)
 
 	return &p

@@ -17,6 +17,7 @@ package openlst
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 )
 
 var (
@@ -43,9 +44,9 @@ type ClientPacketHeader struct {
 }
 
 func (p *ClientPacketHeader) Err() error {
-	//TODO(bcwaldon): confirm length bounds
-	if p.Length < 7 || p.Length > 251 {
-		return errors.New("Length must be 7-251")
+	minLen := CLIENT_PACKET_HEADER_LENGTH - 1
+	if p.Length < minLen || p.Length > 251 {
+		return fmt.Errorf("Length must be %d-251", CLIENT_PACKET_HEADER_LENGTH)
 	}
 	if p.HardwareID < 0 || p.HardwareID > 65535 {
 		return errors.New("HardwareID must be 0-65535")
@@ -98,8 +99,8 @@ func (p *ClientPacket) Err() error {
 	if err := p.ClientPacketHeader.Err(); err != nil {
 		return err
 	}
-	if p.ClientPacketHeader.Length != CLIENT_PACKET_HEADER_LENGTH+len(p.Data) {
-		return errors.New("packet length unequal to header length")
+	if p.ClientPacketHeader.Length != CLIENT_PACKET_HEADER_LENGTH+len(p.Data)-1 {
+		return errors.New("packet length mismatch")
 	}
 
 	return nil
@@ -107,7 +108,7 @@ func (p *ClientPacket) Err() error {
 
 // Encodes packet to byte slice, including header and data.
 func (p *ClientPacket) ToBytes() []byte {
-	buf := make([]byte, p.ClientPacketHeader.Length)
+	buf := make([]byte, p.ClientPacketHeader.Length+1)
 	copy(buf, p.ClientPacketHeader.ToBytes())
 	copy(buf[CLIENT_PACKET_HEADER_LENGTH:], p.Data)
 	return buf
@@ -134,7 +135,7 @@ func (p *ClientPacket) FromBytes(bs []byte) error {
 // Constructs a new ClientPacket using provided header and data inputs.
 //
 // The header length field is automatically set based on the length of
-// the provided data.
+// the provided data. Length does not include itself.
 //
 // The packet returned must be confirmed as valid by the client before
 // further use.
@@ -144,7 +145,7 @@ func NewClientPacket(hdr ClientPacketHeader, dat []byte) *ClientPacket {
 		Data:               dat,
 	}
 
-	p.ClientPacketHeader.Length = CLIENT_PACKET_HEADER_LENGTH + len(dat)
+	p.ClientPacketHeader.Length = CLIENT_PACKET_HEADER_LENGTH + len(dat) - 1
 
 	return &p
 }
