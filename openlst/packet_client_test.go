@@ -127,11 +127,7 @@ func TestClientPacketFromBytes_EmptyFrame(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if err := p.Err(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(p.Data) != 0 {
-		t.Fatalf("expected empty payload, got=% x", p.Data)
+	if err := p.Err(); err == nil {
+		t.Fatalf("expected error, got nil")
 	}
 }

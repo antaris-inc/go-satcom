@@ -50,9 +50,10 @@ type SpacePacketHeader struct {
 }
 
 func (p *SpacePacketHeader) Err() error {
-	minLen := SPACE_PACKET_HEADER_LENGTH + SPACE_PACKET_FOOTER_LENGTH - 1
-	if p.Length < minLen || p.Length > 251 {
-		return fmt.Errorf("Length must be %d-251", minLen)
+	minLen := SPACE_PACKET_HEADER_LENGTH + SPACE_PACKET_FOOTER_LENGTH
+	maxLen := 254
+	if p.Length < minLen || p.Length > maxLen {
+		return fmt.Errorf("Length must be %d-%d", minLen, maxLen)
 	}
 	//TODO(bcwaldon): confirm is this is actually true, as we see
 	// a "flags" value of 192 used in gr-openlst

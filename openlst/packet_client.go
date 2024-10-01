@@ -42,9 +42,9 @@ type ClientPacketHeader struct {
 }
 
 func (p *ClientPacketHeader) Err() error {
-	minLen := CLIENT_PACKET_HEADER_LENGTH - 1
-	if p.Length < minLen || p.Length > 251 {
-		return fmt.Errorf("Length must be %d-251", CLIENT_PACKET_HEADER_LENGTH)
+	maxLen := 251
+	if p.Length < CLIENT_PACKET_HEADER_LENGTH || p.Length > maxLen {
+		return fmt.Errorf("Length must be %d-%d", CLIENT_PACKET_HEADER_LENGTH, maxLen)
 	}
 	if p.HardwareID < 0 || p.HardwareID > 65535 {
 		return errors.New("HardwareID must be 0-65535")
